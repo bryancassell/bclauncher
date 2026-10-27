@@ -1,5 +1,6 @@
 import com.android.build.api.artifact.ScopedArtifact
 import com.android.build.api.variant.ScopedArtifacts
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -9,6 +10,16 @@ plugins {
     alias(libs.plugins.roborazzi)
     jacoco
 }
+
+// A release signing value from an environment variable, or else from local.properties, which git
+// ignores (#3).
+val localProperties = Properties().apply {
+    providers.fileContents(rootProject.layout.projectDirectory.file("local.properties"))
+        .asText.orNull?.let { load(it.reader()) }
+}
+
+fun releaseSigningValue(name: String): String? =
+    providers.environmentVariable(name).orNull ?: localProperties.getProperty(name)
 
 android {
     namespace = "io.github.bryancassell.bclauncher"
@@ -24,9 +35,36 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // The keystore and its passwords stay out of the repo (docs/toolchain.md, Release builds).
+    // Without a keystore, the release builds unsigned, so ./gradlew build still works on PRs and
+    // fresh clones. With a keystore, a missing value fails the build by name, since AGP 9.4.1
+    // reports any missing value as "Keystore file not set" (#3).
+    signingConfigs {
+        val keystore = releaseSigningValue("BCLAUNCHER_KEYSTORE")
+        if (keystore != null) {
+            fun required(name: String) = checkNotNull(releaseSigningValue(name)) {
+                "BCLAUNCHER_KEYSTORE is set but $name isn't (docs/toolchain.md, Release builds)."
+            }
+            create("release") {
+                storeFile = file(keystore)
+                storePassword = required("BCLAUNCHER_KEYSTORE_PASSWORD")
+                keyAlias = required("BCLAUNCHER_KEY_ALIAS")
+                keyPassword = required("BCLAUNCHER_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             enableUnitTestCoverage = true
+        }
+        release {
+            // R8 in full mode and resource shrinking, with Android's default keep rules. App keep
+            // rules go in src/main/keepRules/*.keep. The libraries bring their own (#3).
+            optimization {
+                enable = true
+            }
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
