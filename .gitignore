@@ -11,5 +11,13 @@ local.properties
 !/.idea/vcs.xml
 /captures/
 
+# Release keystores live outside the repo (docs/toolchain.md, Release builds). This keeps one put
+# here by mistake from being committed (#3).
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pepk
+
 # macOS
 .DS_Store

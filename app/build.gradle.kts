@@ -10,6 +10,16 @@ plugins {
     jacoco
 }
 
+// A release signing value from an environment variable, or else from a Gradle property, such as one
+// in ~/.gradle/gradle.properties, which every checkout and worktree reads. The environment wins even
+// over -P, because Gradle doesn't say which source a property came from, and a variable has to be
+// able to override the file. A blank value counts as missing, so an empty variable neither hides
+// the property nor becomes a keystore path (#3).
+fun releaseSigningValue(name: String): String? =
+    providers.environmentVariable(name).filter { it.isNotBlank() }
+        .orElse(providers.gradleProperty(name).filter { it.isNotBlank() })
+        .orNull
+
 android {
     namespace = "io.github.bryancassell.bclauncher"
     compileSdk = 37
@@ -24,9 +34,37 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // The keystore and its password stay out of the repo (docs/toolchain.md, Release builds). The
+    // release is signed only when both are found, so with the path kept in gradle.properties,
+    // routine builds stay unsigned until the password is exported to make a release. A signing
+    // config with a value missing would fail ./gradlew build, which builds the release too.
+    // The alias is the one the doc's keytool command gives, and keytool's PKCS12 keystores use the
+    // store's password for the key. The path is trimmed, since gradle.properties keeps trailing
+    // spaces (#3).
+    signingConfigs {
+        val keystore = releaseSigningValue("BCLAUNCHER_KEYSTORE")
+        val password = releaseSigningValue("BCLAUNCHER_KEYSTORE_PASSWORD")
+        if (keystore != null && password != null) {
+            create("release") {
+                storeFile = file(keystore.trim())
+                storePassword = password
+                keyAlias = "bclauncher"
+                keyPassword = password
+            }
+        }
+    }
+
     buildTypes {
         debug {
             enableUnitTestCoverage = true
+        }
+        release {
+            // R8 in full mode and resource shrinking, with Android's default keep rules. App keep
+            // rules go in src/main/keepRules/*.keep. The libraries bring their own (#3).
+            optimization {
+                enable = true
+            }
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
