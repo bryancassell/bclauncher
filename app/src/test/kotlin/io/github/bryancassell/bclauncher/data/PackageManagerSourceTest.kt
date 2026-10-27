@@ -15,11 +15,14 @@ import android.os.LocaleList
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -42,6 +45,7 @@ class PackageManagerSourceTest {
         applicationBanner: Int = 0,
         activityBanner: Int = 0,
         exported: Boolean = true,
+        permission: String? = null,
     ) {
         val application = ApplicationInfo().apply {
             this.packageName = packageName
@@ -59,6 +63,7 @@ class PackageManagerSourceTest {
             nonLocalizedLabel = label
             banner = activityBanner
             this.exported = exported
+            this.permission = permission
             applicationInfo = application
         }
         packageManager.addOrUpdateActivity(activity)
@@ -99,6 +104,17 @@ class PackageManagerSourceTest {
         val packages = source.tvLauncherActivities().map { it.component.packageName }
 
         assertEquals(setOf("com.example.tv", context.packageName), packages.toSet())
+    }
+
+    @Test
+    fun listsActivitiesThatNeedAPermissionOnlyWhenThisAppHoldsIt() {
+        install("com.example.held", permission = HELD_PERMISSION)
+        install("com.example.missing", permission = "com.example.permission.PRIVATE")
+        shadowOf(context as Application).grantPermissions(HELD_PERMISSION)
+
+        val packages = source.tvLauncherActivities().map { it.component.packageName }
+
+        assertEquals(setOf("com.example.held", context.packageName), packages.toSet())
     }
 
     @Test
@@ -158,8 +174,17 @@ class PackageManagerSourceTest {
         assertEquals(2, changes())
     }
 
+    @Test
+    fun startsListeningOnAThreadWithNoLooper() = runTest {
+        // The repository collects this on Dispatchers.IO, whose threads have no Looper.
+        val first = withContext(Dispatchers.IO) { source.changes.first() }
+
+        assertEquals(Unit, first)
+    }
+
     private companion object {
         const val APPLICATION_BANNER = 0x7f010001
         const val ACTIVITY_BANNER = 0x7f010002
+        const val HELD_PERMISSION = "com.example.permission.HELD"
     }
 }

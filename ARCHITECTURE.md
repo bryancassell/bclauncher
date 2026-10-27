@@ -49,4 +49,4 @@ Blocking calls run on the dispatcher injected as `@IoDispatcher`, so tests can p
 
 Compose UI and screenshot tests run on Robolectric in `app/src/test`, so `./gradlew build` runs them without an emulator. They run as a 1080p TV on API 29 and 37, both ends of the supported range. Roborazzi screenshot tests fail when a screen differs from its baseline in `app/src/test/screenshots`, so visible changes show in the PR's diff (#1).
 
-Tests that start an activity run on `HiltTestApplication`, where `@TestInstallIn` modules replace platform sources such as `PackageSource` with fakes (#4).
+Tests that start an `@AndroidEntryPoint` activity run on `HiltTestApplication`, where `@TestInstallIn` modules replace platform sources such as `PackageSource` with fakes (#4).

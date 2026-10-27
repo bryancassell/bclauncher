@@ -2,36 +2,55 @@ package io.github.bryancassell.bclauncher.data
 
 import android.content.ComponentName
 import android.graphics.drawable.ColorDrawable
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.onSubscription
+import kotlinx.coroutines.flow.callbackFlow
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /** A [PackageSource] whose apps the test sets. In a Hilt test, the app gets this same instance. */
 @Singleton
 class FakePackageSource @Inject constructor() : PackageSource {
-    // The test thread writes it, and the repository may read it on another thread.
+    // The test thread writes these, and the repository may read them on another thread.
     @Volatile
     private var activities: List<InstalledApp> = emptyList()
 
-    private val changeEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 64)
+    @Volatile
+    private var nextLoadAction: (() -> Unit)? = null
+
+    private val loadCount = AtomicInteger()
+
+    private val listeners = CopyOnWriteArrayList<() -> Unit>()
 
     /** How many times the apps were read. */
-    var loads = 0
-        private set
+    val loads: Int get() = loadCount.get()
 
     override fun tvLauncherActivities(): List<InstalledApp> {
-        loads++
-        return activities
+        loadCount.incrementAndGet()
+        val apps = activities
+        nextLoadAction?.also { nextLoadAction = null }?.invoke()
+        return apps
     }
 
-    override val changes: Flow<Unit> = changeEvents.onSubscription { emit(Unit) }
+    // A callbackFlow, like PackageManagerSource's, so a change goes straight into the channel the repository reads.
+    override val changes: Flow<Unit> = callbackFlow {
+        val listener: () -> Unit = { trySend(Unit) }
+        listeners += listener
+        trySend(Unit)
+        awaitClose { listeners -= listener }
+    }
 
     /** Replaces the installed apps and reports a change, as an install or removal would. */
     fun setApps(vararg apps: InstalledApp) {
         activities = apps.toList()
-        changeEvents.tryEmit(Unit)
+        listeners.forEach { it() }
+    }
+
+    /** Runs [action] inside the next load, after it has read the apps, as if it happened while the load ran. */
+    fun duringNextLoad(action: () -> Unit) {
+        nextLoadAction = action
     }
 }
 

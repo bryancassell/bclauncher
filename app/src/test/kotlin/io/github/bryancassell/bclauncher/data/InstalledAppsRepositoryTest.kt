@@ -11,15 +11,18 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.Locale
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
 class InstalledAppsRepositoryTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val packageSource = FakePackageSource()
+    private val defaultLocale = Locale.getDefault()
 
     private fun TestScope.repository() =
         InstalledAppsRepository(context, packageSource, UnconfinedTestDispatcher(testScheduler))
@@ -73,15 +76,38 @@ class InstalledAppsRepositoryTest {
         }
         runCurrent()
 
-        // Three changes in a row, as an app update sends. The first starts a load, and the two that arrive before it
-        // runs are merged into one more, so there are two loads after the first rather than three.
+        // An app update sends several changes in a row. Two arrive while the load for the first is running.
+        packageSource.duringNextLoad {
+            packageSource.setApps(fakeApp("YouTube"), fakeApp("Netflix"))
+            packageSource.setApps(fakeApp("Netflix"))
+        }
         packageSource.setApps(fakeApp("YouTube"))
-        packageSource.setApps(fakeApp("YouTube"), fakeApp("Netflix"))
-        packageSource.setApps(fakeApp("Netflix"))
         runCurrent()
 
         assertEquals(3, packageSource.loads)
-        assertEquals(listOf(emptyList(), listOf("Netflix"), listOf("Netflix")), emissions)
+        assertEquals(listOf(emptyList(), listOf("YouTube"), listOf("Netflix")), emissions)
+    }
+
+    @Test
+    fun sortsInTheLanguageOfEachLoad() = runTest {
+        val apps = arrayOf(fakeApp("Zebra"), fakeApp("Äpple", packageName = "com.example.apple"))
+        Locale.setDefault(Locale.ENGLISH)
+        packageSource.setApps(*apps)
+        val emissions = mutableListOf<List<String>>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            repository().apps.collect { emissions += it.map { app -> app.label } }
+        }
+
+        // Swedish sorts Ä as its own letter, after Z.
+        Locale.setDefault(Locale.forLanguageTag("sv-SE"))
+        packageSource.setApps(*apps)
+
+        assertEquals(listOf(listOf("Äpple", "Zebra"), listOf("Zebra", "Äpple")), emissions)
+    }
+
+    @After
+    fun restoreTheDefaultLocale() {
+        Locale.setDefault(defaultLocale)
     }
 
     @Test

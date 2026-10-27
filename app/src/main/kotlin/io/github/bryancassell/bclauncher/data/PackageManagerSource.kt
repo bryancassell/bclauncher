@@ -4,6 +4,7 @@ import android.content.ComponentCallbacks
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
@@ -30,10 +31,7 @@ class PackageManagerSource @Inject constructor(
     override fun tvLauncherActivities(): List<InstalledApp> {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
         return queryActivities(intent)
-            // Another app can't start an activity that isn't exported, so launching one would throw. Android 14 leaves
-            // them out of implicit intent resolution (SaferIntentUtils.filterNonExportedComponents), but older
-            // versions return them.
-            .filter { it.activityInfo.exported }
+            .filter { canLaunch(it.activityInfo) }
             .map { resolveInfo ->
                 val activity = resolveInfo.activityInfo
                 InstalledApp(
@@ -44,6 +42,20 @@ class PackageManagerSource @Inject constructor(
                     icon = resolveInfo.loadIcon(packageManager),
                 )
             }
+    }
+
+    /**
+     * Whether this app may start [activity]. Launching one it may not start would throw a SecurityException, but the
+     * query still returns:
+     * - Activities that aren't exported, before Android 14. Android 14 leaves them out of implicit intent resolution
+     *   (SaferIntentUtils.filterNonExportedComponents, AOSP main in October 2026, #4).
+     * - Activities that need a permission this app doesn't hold. [ActivityInfo.permission] is the application's
+     *   permission when the activity doesn't set its own.
+     */
+    private fun canLaunch(activity: ActivityInfo): Boolean {
+        val permission = activity.permission
+        return activity.exported &&
+            (permission == null || context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED)
     }
 
     private fun queryActivities(intent: Intent): List<ResolveInfo> =
@@ -58,7 +70,8 @@ class PackageManagerSource @Inject constructor(
         val callback = PackageChangeCallback { trySend(Unit) }
         val launcherApps = context.getSystemService(LauncherApps::class.java)
         // Without a Handler, LauncherApps makes one on the calling thread, which throws on a thread with no Looper,
-        // such as the Dispatchers.IO thread this flow is collected on.
+        // such as the Dispatchers.IO thread this flow is collected on (LauncherApps.addCallbackLocked, AOSP main in
+        // October 2026, #4).
         launcherApps.registerCallback(callback, Handler(Looper.getMainLooper()))
         val localeCallback = LocaleChangeCallback(context.resources.configuration) { trySend(Unit) }
         context.registerComponentCallbacks(localeCallback)
@@ -76,7 +89,7 @@ class PackageManagerSource @Inject constructor(
  *
  * Not ACTION_LOCALE_CHANGED: on the Google TV emulator (API 36) that broadcast arrived 50 to 100 ms before this
  * process's resources switched language, so a reload it started read the old labels. The application's
- * onConfigurationChanged comes after the resources are updated.
+ * onConfigurationChanged comes after the resources are updated (#4).
  */
 internal class LocaleChangeCallback(
     configuration: Configuration,
@@ -100,7 +113,8 @@ internal class LocaleChangeCallback(
  *
  * LauncherApps.Callback, as Android's own launcher uses, rather than package broadcasts: one registration covers
  * installs, updates, removals, enabling and disabling, and apps on storage that comes and goes. It still reports a
- * package once it's uninstalled and no longer visible (LauncherAppsService.isPackageVisibleToListener, AOSP main).
+ * package once it's uninstalled and no longer visible (LauncherAppsService.isPackageVisibleToListener, AOSP main in
+ * October 2026, #4).
  */
 internal class PackageChangeCallback(private val onChange: () -> Unit) : LauncherApps.Callback() {
     override fun onPackageAdded(packageName: String, user: UserHandle) = onChange()

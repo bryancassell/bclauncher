@@ -9,7 +9,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Qualifier
 
-/** Marks the dispatcher for blocking calls, injected so tests can pass a test dispatcher. */
+/** Qualifies the dispatcher for blocking calls (ARCHITECTURE.md, Dependency injection). */
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class IoDispatcher
