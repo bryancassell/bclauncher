@@ -51,7 +51,8 @@ android {
 
 jacoco {
     // Each JaCoCo release supports class files up to some Java version, so the agent is upgraded
-    // with the JDK the tests run on, not left at Gradle's default (#2).
+    // with the JDK the tests run on. Without this, it's 0.8.15 with Gradle 9.8.2 and AGP 9.4.1.
+    // android.testCoverage.jacocoVersion doesn't change the agent the unit tests run (#2).
     toolVersion = libs.versions.jacoco.get()
 }
 
@@ -60,19 +61,16 @@ roborazzi {
     outputDir.set(file("src/test/screenshots"))
 }
 
-// The coverage check skips code no test can call directly: classes that Hilt generates, and
-// previews, which only Android Studio runs (ARCHITECTURE.md, Tests) (#2).
+// The coverage check skips code no test can call directly: the components and aggregation
+// classes Hilt generates, and previews, which only Android Studio runs. Only previews under ui/
+// are skipped, so data-layer code such as TV preview channels can't drop out by its file name
+// (ARCHITECTURE.md, Tests) (#2).
 val coverageExclusions = listOf(
-    "**/Hilt_*.class",
-    "**/*_Hilt*.class",
+    "**/*_HiltComponents*.class",
     "**/*_ComponentTreeDeps*.class",
-    "**/*_GeneratedInjector*.class",
-    "**/*_Factory*.class",
-    "**/*_MembersInjector*.class",
     "dagger/hilt/internal/**",
     "hilt_aggregated_deps/**",
-    "**/*PreviewsKt*.class",
-    "**/ComposableSingletons$*PreviewsKt*.class",
+    "**/ui/**/*PreviewsKt*.class",
 )
 
 // AGP's own unit test coverage report can't skip classes or fail the build, so these tasks read
@@ -110,12 +108,13 @@ androidComponents {
             val jars = objectFactory.listProperty<RegularFile>()
             val dirs = objectFactory.listProperty<Directory>()
             task.configure {
+                // Takes the file from the test task, wherever its JaCoCo extension writes it. This
+                // only orders the tasks, so dependsOn is needed too.
+                executionData(tasks.getByName(unitTest))
                 dependsOn(unitTest)
-                executionData.setFrom(
-                    layout.buildDirectory.file(
-                        "outputs/unit_test_code_coverage/${variant.name}UnitTest/$unitTest.exec",
-                    ),
-                )
+                // JaCoCo's tasks skip themselves when there's no execution data, which would let
+                // the build pass without a coverage check.
+                setOnlyIf { true }
                 sourceDirectories.setFrom("src/main/kotlin")
                 // The jars hold only R classes, which have no lines to cover.
                 classDirectories.setFrom(
@@ -140,6 +139,9 @@ tasks.withType<Test>().configureEach {
         // Robolectric loads the app's classes through its own class loader, which gives them no
         // code source. Without this, JaCoCo skips them and every class reads 0% (#2).
         isIncludeNoLocationClasses = true
+        // That would also instrument every class the sandbox loads, including the JDK's generated
+        // reflection accessors, which breaks creating objects the way mocking libraries do (#2).
+        includes = listOf("io.github.bryancassell.bclauncher.*")
     }
 }
 
@@ -165,16 +167,16 @@ dependencies {
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
 
     constraints {
-        testImplementation(libs.androidx.test.espresso.core) {
-            because(
-                "Compose's test rule brings Espresso 3.5.1, which calls " +
-                    "InputManager.getInstance() by reflection. API 37 removed that method, so " +
-                    "every Compose test failed until Espresso was raised to 3.7.0 (#1).",
-            )
-        }
+        val espressoReason =
+            "Compose's test rule brings Espresso 3.5.1, which calls " +
+                "InputManager.getInstance() by reflection. API 37 removed that method, so " +
+                "every Compose test failed until Espresso was raised to 3.7.0 (#1)."
+        testImplementation(libs.androidx.test.espresso.core) { because(espressoReason) }
+        androidTestImplementation(libs.androidx.test.espresso.core) { because(espressoReason) }
     }
 }

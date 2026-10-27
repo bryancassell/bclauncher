@@ -9,7 +9,7 @@ Gradle runs on JDK 25, pinned in `gradle/gradle-daemon-jvm.properties`, and down
 `./gradlew build` checks a change. It runs:
 
 - the unit tests in `app/src/test`, on Robolectric
-- the coverage check, which fails when a class has under 80% line coverage. It skips classes that AGP and Hilt generate, and `*Previews.kt` files.
+- the coverage check, which fails when a class has under 80% line coverage. It skips the classes Hilt generates, and `*Previews.kt` files under `ui/`.
 - lint
 - Spotless, which checks formatting with ktlint in the `android_studio` style set in `.editorconfig`.
 
