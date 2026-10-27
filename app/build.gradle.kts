@@ -1,6 +1,5 @@
 import com.android.build.api.artifact.ScopedArtifact
 import com.android.build.api.variant.ScopedArtifacts
-import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -11,15 +10,13 @@ plugins {
     jacoco
 }
 
-// A release signing value from an environment variable, or else from local.properties, which git
-// ignores (#3).
-val localProperties = Properties().apply {
-    providers.fileContents(rootProject.layout.projectDirectory.file("local.properties"))
-        .asText.orNull?.let { load(it.reader()) }
-}
-
+// A release signing value from an environment variable, or else from a Gradle property, such as one
+// in ~/.gradle/gradle.properties, which every checkout and worktree reads. A blank value counts as
+// missing, so an empty variable neither hides the property nor becomes a keystore path (#3).
 fun releaseSigningValue(name: String): String? =
-    providers.environmentVariable(name).orNull ?: localProperties.getProperty(name)
+    providers.environmentVariable(name).filter { it.isNotBlank() }
+        .orElse(providers.gradleProperty(name).filter { it.isNotBlank() })
+        .orNull
 
 android {
     namespace = "io.github.bryancassell.bclauncher"
@@ -37,19 +34,18 @@ android {
 
     // The keystore and its passwords stay out of the repo (docs/toolchain.md, Release builds).
     // Without a keystore, the release builds unsigned, so ./gradlew build still works on PRs and
-    // fresh clones. With a keystore, a missing value fails the build by name, since AGP 9.4.1
-    // reports any missing value as "Keystore file not set" (#3).
+    // fresh clones. With a keystore, AGP's signing check fails the release when another value is
+    // missing, though AGP 9.4.1 reports any missing value as "Keystore file not set". A check here
+    // that named the value would run while this script is evaluated, failing every task, debug
+    // builds and Android Studio's sync included (#3).
     signingConfigs {
         val keystore = releaseSigningValue("BCLAUNCHER_KEYSTORE")
         if (keystore != null) {
-            fun required(name: String) = checkNotNull(releaseSigningValue(name)) {
-                "BCLAUNCHER_KEYSTORE is set but $name isn't (docs/toolchain.md, Release builds)."
-            }
             create("release") {
                 storeFile = file(keystore)
-                storePassword = required("BCLAUNCHER_KEYSTORE_PASSWORD")
-                keyAlias = required("BCLAUNCHER_KEY_ALIAS")
-                keyPassword = required("BCLAUNCHER_KEY_PASSWORD")
+                storePassword = releaseSigningValue("BCLAUNCHER_KEYSTORE_PASSWORD")
+                keyAlias = releaseSigningValue("BCLAUNCHER_KEY_ALIAS")
+                keyPassword = releaseSigningValue("BCLAUNCHER_KEY_PASSWORD")
             }
         }
     }
