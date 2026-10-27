@@ -1,0 +1,17 @@
+# Gradle
+.gradle/
+.kotlin/
+build/
+local.properties
+
+# Android Studio. These are generated from the Gradle build or hold per-user state.
+*.iml
+/.idea/caches/
+/.idea/libraries/
+/.idea/modules.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+/captures/
+
+# macOS
+.DS_Store

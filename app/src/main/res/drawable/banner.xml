@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The 320 x 180 dp banner that TV home screens show for the app: a grid of app tiles, one of them focused.
+     Lint limits vectors to 200 x 200 because large ones are slow to redraw, but only TV home screens draw
+     the banner, at this one size, so it stays a vector rather than a PNG per density. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180"
+    tools:ignore="VectorRaster">
+    <path
+        android:fillColor="@color/brand_background"
+        android:pathData="M0,0 h320 v180 h-320 z" />
+    <path
+        android:fillColor="@color/brand_tile"
+        android:pathData="M142,55 h36 a6,6 0 0 1 6,6 v18 a6,6 0 0 1 -6,6 h-36 a6,6 0 0 1 -6,-6 v-18 a6,6 0 0 1 6,-6 z M200,55 h36 a6,6 0 0 1 6,6 v18 a6,6 0 0 1 -6,6 h-36 a6,6 0 0 1 -6,-6 v-18 a6,6 0 0 1 6,-6 z M84,95 h36 a6,6 0 0 1 6,6 v18 a6,6 0 0 1 -6,6 h-36 a6,6 0 0 1 -6,-6 v-18 a6,6 0 0 1 6,-6 z M142,95 h36 a6,6 0 0 1 6,6 v18 a6,6 0 0 1 -6,6 h-36 a6,6 0 0 1 -6,-6 v-18 a6,6 0 0 1 6,-6 z M200,95 h36 a6,6 0 0 1 6,6 v18 a6,6 0 0 1 -6,6 h-36 a6,6 0 0 1 -6,-6 v-18 a6,6 0 0 1 6,-6 z" />
+    <path
+        android:fillColor="@color/brand_tile_focused"
+        android:pathData="M84,55 h36 a6,6 0 0 1 6,6 v18 a6,6 0 0 1 -6,6 h-36 a6,6 0 0 1 -6,-6 v-18 a6,6 0 0 1 6,-6 z" />
+</vector>
