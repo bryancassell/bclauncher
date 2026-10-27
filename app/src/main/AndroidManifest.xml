@@ -9,6 +9,14 @@
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
+    <!-- Makes the apps the home screen lists visible from API 30, without QUERY_ALL_PACKAGES (#4). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".BcLauncherApplication"
         android:banner="@drawable/banner"

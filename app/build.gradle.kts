@@ -66,9 +66,13 @@ roborazzi {
 // classes Hilt generates, and previews, which only Android Studio runs. Only previews under ui/
 // are skipped, so data-layer code such as TV preview channels can't drop out by its file name
 // (ARCHITECTURE.md, Tests) (#2).
+// Dagger's InstanceHolder serves a no-argument @Provides method's factory only through
+// create(), for an injected Provider or Lazy. Hilt's components call the static method instead,
+// so no test reaches it (#4).
 val coverageExclusions = listOf(
     "**/*_HiltComponents*.class",
     "**/*_ComponentTreeDeps*.class",
+    "**/*Factory\$InstanceHolder.class",
     "dagger/hilt/internal/**",
     "hilt_aggregated_deps/**",
     "**/ui/**/*PreviewsKt*.class",
@@ -154,6 +158,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.tv.material)
     implementation(libs.hilt.android)
+    implementation(libs.kotlinx.coroutines.android)
     ksp(libs.hilt.compiler)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
@@ -162,9 +167,12 @@ dependencies {
     testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.hilt.android.testing)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)
+    kspTest(libs.hilt.compiler)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

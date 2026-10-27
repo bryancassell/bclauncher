@@ -22,3 +22,5 @@ This project is a minimal replacement home screen for Google TV devices that foc
 |---|---|---|
 | The app is called "BC Launcher" on the TV. | It's the readable form of the repo's name, `bclauncher`. | #1 |
 | The app installs only on TVs: its manifest requires `android.software.leanback`. | It's a home screen for Google TV, with no use on a phone. | #1 |
+| The home screen lists the apps that open from a TV's app list (`CATEGORY_LEANBACK_LAUNCHER`), except BC Launcher itself. | They're the apps built for a remote, and the ones Google TV shows. Opening BC Launcher from its own list would do nothing. | #4 |
+| An app's tile shows its banner, or its icon when it has none. | Android TV requires every app to provide a 320 × 180 banner with its name in it. | #4 |
