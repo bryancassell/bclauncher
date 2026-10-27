@@ -44,8 +44,16 @@ class FakePackageSource @Inject constructor() : PackageSource {
 
     /** Replaces the installed apps and reports a change, as an install or removal would. */
     fun setApps(vararg apps: InstalledApp) {
-        activities = apps.toList()
+        setAppsWithoutReporting(*apps)
         listeners.forEach { it() }
+    }
+
+    /**
+     * Replaces the installed apps without reporting a change, as when an update removes an app's only TV activity
+     * and BC Launcher can no longer see the package to be told.
+     */
+    fun setAppsWithoutReporting(vararg apps: InstalledApp) {
+        activities = apps.toList()
     }
 
     /** Runs [action] inside the next load, after it has read the apps, as if it happened while the load ran. */
