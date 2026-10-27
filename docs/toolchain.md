@@ -12,7 +12,7 @@ Gradle runs on JDK 25, pinned in `gradle/gradle-daemon-jvm.properties`, and down
 - the coverage check, which fails when a class has under 80% line coverage. It skips the components and aggregation classes Hilt generates, and `*Previews.kt` files under `ui/`.
 - lint
 - Spotless, which checks formatting with ktlint in the `android_studio` style set in `.editorconfig`.
-- the debug build, and the release build through R8, unsigned unless a keystore is set up ([Release builds](#release-builds)). An R8 error fails the build.
+- the debug build, and the release build through R8, unsigned unless the keystore and its password are both set ([Release builds](#release-builds)). An R8 error fails the build.
 
 Other tasks:
 
@@ -37,14 +37,14 @@ Record only to accept a change you meant to make, never to get a failing test to
 
 ## Release builds
 
-The release build runs R8 in full mode, which shrinks, optimizes and renames the code, and removes unused resources. Release builds are made locally. CI builds the release only unsigned, so the key stays on one machine.
+The release build runs R8 in full mode, which shrinks, optimizes and renames the code, and removes unused resources. Release builds are made locally, so the key stays on one machine. CI signs its release build with a throwaway key it makes on each run, to check that signing still works.
 
 ### The keystore
 
 Make it once, outside the repo, so it can't be committed or deleted by `git clean`. Don't put it in `~/.android/`, which people delete to reset adb and the emulator:
 
 ```
-mkdir -p ~/keys
+mkdir -p -m 700 ~/keys
 keytool -genkeypair -v -keystore ~/keys/bclauncher-release.jks -alias bclauncher \
   -keyalg RSA -keysize 4096 -validity 10000
 ```
@@ -55,23 +55,20 @@ Keep a copy of the keystore and its password in a password manager. Every versio
 
 ### Signing
 
-Gradle reads four values, each from an environment variable or else from a Gradle property. Put them in `~/.gradle/gradle.properties`, which every checkout and worktree reads, and never in the repo's `gradle.properties`, which is committed:
+Gradle reads two values, each from an environment variable or else from a Gradle property. The environment wins, even over `-P`. A blank value counts as missing.
 
-| Name | Value |
-|---|---|
-| `BCLAUNCHER_KEYSTORE` | The keystore's absolute path, without `~`, such as `/Users/you/keys/bclauncher-release.jks` |
-| `BCLAUNCHER_KEYSTORE_PASSWORD` | Its password |
-| `BCLAUNCHER_KEY_ALIAS` | `bclauncher` |
-| `BCLAUNCHER_KEY_PASSWORD` | The same password |
+| Name | Value | Where to set it |
+|---|---|---|
+| `BCLAUNCHER_KEYSTORE` | The keystore's absolute path, without `~`, such as `/Users/you/keys/bclauncher-release.jks` | `~/.gradle/gradle.properties`, which every checkout and worktree reads. Never the repo's `gradle.properties`, which is committed. |
+| `BCLAUNCHER_KEYSTORE_PASSWORD` | Its password | The environment, only in the shell where you make a release |
 
-Each value is looked up on its own, so the path can stay in the file while the passwords come from the environment. A blank value counts as missing.
-
-Without `BCLAUNCHER_KEYSTORE`, the release builds unsigned, as `app-release-unsigned.apk`, and there's no `installRelease` task. With it, a missing value fails signing with AGP's "Keystore file not set", whichever value is missing.
+The release is signed only when both are set, so routine builds stay unsigned and leave no APK signed with the real key around. Unsigned, it builds as `app-release-unsigned.apk`, and there's no `installRelease` task.
 
 To build and install a signed release:
 
-1. `./gradlew assembleRelease` writes `app/build/outputs/apk/release/app-release.apk`.
-2. A debug build is signed with a different key, so remove it first with `adb uninstall io.github.bryancassell.bclauncher`. Then `./gradlew installRelease`.
+1. In the shell you'll build from, run `read -rs BCLAUNCHER_KEYSTORE_PASSWORD && export BCLAUNCHER_KEYSTORE_PASSWORD` and paste the password.
+2. `./gradlew assembleRelease` writes `app/build/outputs/apk/release/app-release.apk`. Keep `app/build/outputs/mapping/release/mapping.txt` with it, since the next build overwrites it, and retracing a crash from this release needs it.
+3. A debug build is signed with a different key, so remove it first with `adb uninstall io.github.bryancassell.bclauncher`. Then `./gradlew installRelease`.
 
 To go back to debug builds, uninstall the release the same way. `connectedDebugAndroidTest` fails while a release is installed.
 
@@ -79,10 +76,10 @@ To go back to debug builds, uninstall the release the same way. `connectedDebugA
 
 R8 removes and renames code that nothing seems to call, so code that's reached only by reflection can break in a release while every test passes on the debug build. After adding or updating AGP, a library, a keep rule or code that uses reflection:
 
-1. Clear the crash log with `adb logcat -b crash -c`, so it shows only crashes from this check.
-2. Install a signed release on the Google TV emulator, as above. A throwaway keystore is fine for this, with all four values set for it.
+1. Clear the log with `adb logcat -b all -c`, so it shows only this check.
+2. Install a signed release on the Google TV emulator, as above. A throwaway keystore is fine for this, with both values set for it in the environment.
 3. Open BC Launcher from the TV's app list, and use what the change touched.
-4. `adb logcat -d -b crash` prints nothing.
+4. `adb logcat -d -b main,crash | grep -E -A2 'FATAL EXCEPTION|ClassNotFound|NoSuchMethod|NoSuchField'` shows nothing from `io.github.bryancassell.bclauncher`. It finds errors the app caught and logged as well as crashes, and the lines after each match name its process.
 
 When something breaks, `app/build/outputs/mapping/release/usage.txt` lists the code R8 removed, and `retrace` in the SDK's `cmdline-tools` turns a renamed stack trace back into source names using `mapping.txt` from the same build. Keep rules go in `app/src/main/keepRules/*.keep`, each with a comment saying what needs it.
 
@@ -90,7 +87,7 @@ When something breaks, `app/build/outputs/mapping/release/usage.txt` lists the c
 
 `.github/workflows/ci.yml` runs on every PR and on pushes to `main`:
 
-- **Build:** `./gradlew build -Proborazzi.test.verify=true`, which also checks screenshots.
+- **Build:** `./gradlew build -Proborazzi.test.verify=true`, which also checks screenshots. A throwaway key made for the run signs the release, and `apksigner verify` then checks it.
 - **Instrumented tests:** `./gradlew connectedDebugAndroidTest` on a Google TV API 36 emulator. Gradle managed devices don't support TV images in AGP 9.4.1, so `android-emulator-runner` starts the emulator.
 
 `.github/workflows/doc-growth.yml` runs **Doc growth**, which fails when a PR gives ARCHITECTURE.md or PRD.md more words (`wc -w`) than `main` has, unless the PR has the `grows-docs` label. Adding or removing a label reruns it.

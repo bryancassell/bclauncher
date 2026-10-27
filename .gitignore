@@ -15,6 +15,9 @@ local.properties
 # here by mistake from being committed (#3).
 *.jks
 *.keystore
+*.p12
+*.pfx
+*.pepk
 
 # macOS
 .DS_Store

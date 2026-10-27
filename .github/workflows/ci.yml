@@ -28,9 +28,21 @@ jobs:
         with:
           # The default caching is proprietary; this one is MIT-licensed, like the project.
           cache-provider: basic
+      # A key made for this run signs the release, so a change that breaks signing fails here. The
+      # real key never comes to CI (docs/toolchain.md, Release builds) (#3).
+      - name: Make a throwaway release key
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/release.jks" -alias bclauncher \
+            -keyalg RSA -keysize 2048 -validity 1 -storepass throwaway -dname CN=CI
+          echo "BCLAUNCHER_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "BCLAUNCHER_KEYSTORE_PASSWORD=throwaway" >> "$GITHUB_ENV"
       # Only CI checks screenshots, because their baselines are recorded on Linux
       # (ARCHITECTURE.md, Tests).
       - run: ./gradlew build -Proborazzi.test.verify=true
+      - name: Check the release is signed
+        run: |
+          build_tools="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$build_tools/apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk
       - name: Upload screenshot comparisons
         if: failure()
         uses: actions/upload-artifact@v7

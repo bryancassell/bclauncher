@@ -11,8 +11,10 @@ plugins {
 }
 
 // A release signing value from an environment variable, or else from a Gradle property, such as one
-// in ~/.gradle/gradle.properties, which every checkout and worktree reads. A blank value counts as
-// missing, so an empty variable neither hides the property nor becomes a keystore path (#3).
+// in ~/.gradle/gradle.properties, which every checkout and worktree reads. The environment wins even
+// over -P, because Gradle doesn't say which source a property came from, and a variable has to be
+// able to override the file. A blank value counts as missing, so an empty variable neither hides
+// the property nor becomes a keystore path (#3).
 fun releaseSigningValue(name: String): String? =
     providers.environmentVariable(name).filter { it.isNotBlank() }
         .orElse(providers.gradleProperty(name).filter { it.isNotBlank() })
@@ -32,20 +34,22 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    // The keystore and its passwords stay out of the repo (docs/toolchain.md, Release builds).
-    // Without a keystore, the release builds unsigned, so ./gradlew build still works on PRs and
-    // fresh clones. With a keystore, AGP's signing check fails the release when another value is
-    // missing, though AGP 9.4.1 reports any missing value as "Keystore file not set". A check here
-    // that named the value would run while this script is evaluated, failing every task, debug
-    // builds and Android Studio's sync included (#3).
+    // The keystore and its password stay out of the repo (docs/toolchain.md, Release builds). The
+    // release is signed only when both are found, so with the path kept in gradle.properties,
+    // routine builds stay unsigned until the password is exported to make a release. A signing
+    // config with a value missing would fail ./gradlew build, which builds the release too.
+    // The alias is the one the doc's keytool command gives, and keytool's PKCS12 keystores use the
+    // store's password for the key. The path is trimmed, since gradle.properties keeps trailing
+    // spaces (#3).
     signingConfigs {
         val keystore = releaseSigningValue("BCLAUNCHER_KEYSTORE")
-        if (keystore != null) {
+        val password = releaseSigningValue("BCLAUNCHER_KEYSTORE_PASSWORD")
+        if (keystore != null && password != null) {
             create("release") {
-                storeFile = file(keystore)
-                storePassword = releaseSigningValue("BCLAUNCHER_KEYSTORE_PASSWORD")
-                keyAlias = releaseSigningValue("BCLAUNCHER_KEY_ALIAS")
-                keyPassword = releaseSigningValue("BCLAUNCHER_KEY_PASSWORD")
+                storeFile = file(keystore.trim())
+                storePassword = password
+                keyAlias = "bclauncher"
+                keyPassword = password
             }
         }
     }
