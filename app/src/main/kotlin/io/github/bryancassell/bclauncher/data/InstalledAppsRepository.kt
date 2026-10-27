@@ -7,7 +7,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onStart
 import java.text.Collator
 import javax.inject.Inject
 
@@ -18,21 +17,22 @@ class InstalledAppsRepository @Inject constructor(
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) {
     /**
-     * Every app with a TV launch activity except this one, by label, emitted again after each package change
-     * (PRD.md, Design decisions). Updating an app sends several changes in a row, so changes that arrive during a
-     * load are merged into one more load.
+     * Every app with a TV launch activity except this one, by label, emitted again after each package or language
+     * change (PRD.md, Design decisions). Updating an app sends several changes in a row, so changes that arrive
+     * during a load are merged into one more load.
      */
-    val apps: Flow<List<InstalledApp>> = packageSource.packageChanges
-        .onStart { emit(Unit) }
+    val apps: Flow<List<InstalledApp>> = packageSource.changes
         .conflate()
         .map { loadApps() }
         .flowOn(ioDispatcher)
 
     private fun loadApps(): List<InstalledApp> {
-        // Collator orders labels by the user's language, so "apple" sorts before "Banana".
-        val collator = Collator.getInstance()
+        // Collator orders labels by the user's language, so "apple" sorts before "Banana". Apps with the same label
+        // are ordered by component, so they don't swap places when PackageManager returns them in another order.
+        val order = compareBy(Collator.getInstance()) { app: InstalledApp -> app.label }
+            .thenBy { it.component.flattenToString() }
         return packageSource.tvLauncherActivities()
             .filter { it.component.packageName != context.packageName }
-            .sortedWith(compareBy(collator) { it.label })
+            .sortedWith(order)
     }
 }

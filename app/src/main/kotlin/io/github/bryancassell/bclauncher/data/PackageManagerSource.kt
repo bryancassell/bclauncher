@@ -1,11 +1,13 @@
 package io.github.bryancassell.bclauncher.data
 
+import android.content.ComponentCallbacks
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -27,16 +29,21 @@ class PackageManagerSource @Inject constructor(
 
     override fun tvLauncherActivities(): List<InstalledApp> {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
-        return queryActivities(intent).map { resolveInfo ->
-            val activity = resolveInfo.activityInfo
-            InstalledApp(
-                component = ComponentName(activity.packageName, activity.name),
-                label = resolveInfo.loadLabel(packageManager).toString(),
-                // The activity's banner, else the application's, else null.
-                banner = activity.loadBanner(packageManager),
-                icon = resolveInfo.loadIcon(packageManager),
-            )
-        }
+        return queryActivities(intent)
+            // Another app can't start an activity that isn't exported, so launching one would throw. Android 14 leaves
+            // them out of implicit intent resolution (SaferIntentUtils.filterNonExportedComponents), but older
+            // versions return them.
+            .filter { it.activityInfo.exported }
+            .map { resolveInfo ->
+                val activity = resolveInfo.activityInfo
+                InstalledApp(
+                    component = ComponentName(activity.packageName, activity.name),
+                    label = resolveInfo.loadLabel(packageManager).toString(),
+                    // The activity's banner, else the application's, else null.
+                    banner = activity.loadBanner(packageManager),
+                    icon = resolveInfo.loadIcon(packageManager),
+                )
+            }
     }
 
     private fun queryActivities(intent: Intent): List<ResolveInfo> =
@@ -47,14 +54,45 @@ class PackageManagerSource @Inject constructor(
             packageManager.queryIntentActivities(intent, 0)
         }
 
-    override val packageChanges: Flow<Unit> = callbackFlow {
+    override val changes: Flow<Unit> = callbackFlow {
         val callback = PackageChangeCallback { trySend(Unit) }
         val launcherApps = context.getSystemService(LauncherApps::class.java)
         // Without a Handler, LauncherApps makes one on the calling thread, which throws on a thread with no Looper,
         // such as the Dispatchers.IO thread this flow is collected on.
         launcherApps.registerCallback(callback, Handler(Looper.getMainLooper()))
-        awaitClose { launcherApps.unregisterCallback(callback) }
+        val localeCallback = LocaleChangeCallback(context.resources.configuration) { trySend(Unit) }
+        context.registerComponentCallbacks(localeCallback)
+        trySend(Unit)
+        awaitClose {
+            context.unregisterComponentCallbacks(localeCallback)
+            launcherApps.unregisterCallback(callback)
+        }
     }
+}
+
+/**
+ * Calls [onChange] when the language changes. Labels and banners come in the TV's language, and a language change
+ * recreates the activity but not the ViewModel collecting the list, so without a reload the old names would stay.
+ *
+ * Not ACTION_LOCALE_CHANGED: on the Google TV emulator (API 36) that broadcast arrived 50 to 100 ms before this
+ * process's resources switched language, so a reload it started read the old labels. The application's
+ * onConfigurationChanged comes after the resources are updated.
+ */
+internal class LocaleChangeCallback(
+    configuration: Configuration,
+    private val onChange: () -> Unit,
+) : ComponentCallbacks {
+    private var locales = configuration.locales
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        if (newConfig.locales != locales) {
+            locales = newConfig.locales
+            onChange()
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onLowMemory() = Unit
 }
 
 /**

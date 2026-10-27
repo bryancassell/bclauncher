@@ -4,24 +4,34 @@ import android.content.ComponentName
 import android.graphics.drawable.ColorDrawable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.onSubscription
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /** A [PackageSource] whose apps the test sets. In a Hilt test, the app gets this same instance. */
 @Singleton
 class FakePackageSource @Inject constructor() : PackageSource {
+    // The test thread writes it, and the repository may read it on another thread.
+    @Volatile
     private var activities: List<InstalledApp> = emptyList()
 
-    private val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 64)
+    private val changeEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 64)
 
-    override fun tvLauncherActivities(): List<InstalledApp> = activities
+    /** How many times the apps were read. */
+    var loads = 0
+        private set
 
-    override val packageChanges: Flow<Unit> = changes
+    override fun tvLauncherActivities(): List<InstalledApp> {
+        loads++
+        return activities
+    }
 
-    /** Replaces the installed apps and reports a package change, as an install or removal would. */
+    override val changes: Flow<Unit> = changeEvents.onSubscription { emit(Unit) }
+
+    /** Replaces the installed apps and reports a change, as an install or removal would. */
     fun setApps(vararg apps: InstalledApp) {
         activities = apps.toList()
-        changes.tryEmit(Unit)
+        changeEvents.tryEmit(Unit)
     }
 }
 
