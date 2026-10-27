@@ -26,8 +26,11 @@ android {
         unitTests {
             isIncludeAndroidResources = true
             all {
-                // Robolectric 4.17 runs API 37's framework code, whose ApplicationSharedMemory reaches
-                // FileDescriptor internals through jdk.internal.access. JDK 25 blocks that unless it's opened.
+                // Tests run on the JDK that runs Gradle, pinned in gradle/gradle-daemon-jvm.properties,
+                // because Robolectric 4.17 needs Java 21 or later for SDK 36 and 37.
+                // Robolectric runs API 37's framework code, whose ApplicationSharedMemory reaches
+                // FileDescriptor internals through jdk.internal.access. JDK 17 and later block that
+                // unless it's opened (#1).
                 it.jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
             }
         }
@@ -35,13 +38,14 @@ android {
 }
 
 roborazzi {
-    // Baselines live in the repo so a screenshot change shows up in the PR's diff.
+    // Baselines live in the repo so a screenshot change shows up in the PR's diff (#1).
     outputDir.set(file("src/test/screenshots"))
 }
 
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.tv.material)
@@ -54,12 +58,10 @@ dependencies {
     testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.androidx.test.core)
     // Compose's test rule brings Espresso 3.5.1, which calls InputManager.getInstance() by reflection.
-    // API 37 removed that method, so every Compose test failed until Espresso was raised to 3.7.0.
+    // API 37 removed that method, so every Compose test failed until Espresso was raised to 3.7.0 (#1).
     testImplementation(libs.androidx.test.espresso.core)
     testImplementation(libs.androidx.test.ext.junit)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)
-    testImplementation(libs.roborazzi.compose)
-    testImplementation(libs.roborazzi.junit.rule)
 }

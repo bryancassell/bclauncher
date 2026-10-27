@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The 320 x 180 dp banner that TV home screens show for the app: a grid of app tiles, one of them focused.
      Lint limits vectors to 200 x 200 because large ones are slow to redraw, but only TV home screens draw
-     the banner, at this one size, so it stays a vector rather than a PNG per density. -->
+     the banner, at this one size, so it stays a vector rather than a PNG per density (#1). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:width="320dp"
