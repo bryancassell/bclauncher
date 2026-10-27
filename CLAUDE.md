@@ -7,7 +7,7 @@ The architecture design for this project is in ARCHITECTURE.md. Read its table o
 - **ARCHITECTURE.md:** what someone changing a different part of the app must know. That means the technical decisions and conventions that more than one place follows, each with its reason in a sentence or two. Each row of its Decisions table is one line that links to its section.
 - **PRD.md's Design decisions:** choices about how the app looks and behaves. Each row gives the choice in a sentence or two, the main reason, and issue links.
 - **A comment at the code:** anything that concerns one class, one function or one bug. That includes how it works, why it's built that way, alternatives that were tried, library internals and the versions they were checked against, and the issue link. A comment gives its own reason rather than sending the reader to ARCHITECTURE.md or PRD.md for it. It names their section or row only for a convention or choice they set for more than this code, such as "(ARCHITECTURE.md, Language and layout direction)".
-- **docs/toolchain.md:** build, CI, signing and release process. **docs/catalog.md:** the catalog's format and how to write it.
+- **docs/toolchain.md:** build, CI, signing and release process.
 - **Issues and PRs:** how a bug was found and fixed, and whether an issue is still open.
 
 Before adding to ARCHITECTURE.md or PRD.md, check that the text isn't already in a comment, and remove what the addition makes redundant. A PR that makes either file longer needs the developer's agreement and the `grows-docs` label; CI's Doc growth check fails without it.
