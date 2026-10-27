@@ -1,6 +1,6 @@
 # Architecture
 
-The technical decisions and conventions that more than one part of BC Launcher follows, each with its reason.
+Decisions and conventions that more than one part of BC Launcher follows, with their reasons.
 
 ## Contents
 
@@ -19,7 +19,7 @@ The technical decisions and conventions that more than one part of BC Launcher f
 | [UI toolkit](#ui-toolkit) | Compose for TV, with components from `androidx.tv.material3`. |
 | [Layers and packages](#layers-and-packages) | A UI layer and a data layer in one `app` module, with no domain layer yet. |
 | [Dependency injection](#dependency-injection) | Hilt, with KSP. |
-| [Tests](#tests) | Compose UI and screenshot tests run locally on Robolectric as a 1080p TV, with Roborazzi for screenshots. |
+| [Tests](#tests) | Local Robolectric tests, as a 1080p TV on API 29 and 37. |
 
 ## Platform versions
 
@@ -27,7 +27,7 @@ minSdk is 29 (Android TV 10), the version Google TV first shipped on, so the app
 
 ## UI toolkit
 
-The UI is Jetpack Compose with Compose for TV. `MaterialTheme`, `Surface`, `Text` and other Material components come from `androidx.tv.material3`, not `androidx.compose.material3`, because the TV versions are built for D-pad focus and viewing from across a room. Android recommends Compose for TV and has deprecated Leanback (#1).
+The UI uses Compose for TV. `MaterialTheme`, `Surface`, `Text` and other Material components come from `androidx.tv.material3`, not `androidx.compose.material3`, because the TV versions are built for D-pad focus and viewing from across a room. Android recommends Compose for TV and has deprecated Leanback (#1).
 
 ## Layers and packages
 
@@ -37,12 +37,12 @@ The code follows Android's [Guide to app architecture](https://developer.android
 - The data layer is repositories, in `data`.
 - A domain layer waits until two ViewModels need the same logic.
 
-Everything is in the one `app` module, because the app is small (#1).
+Everything is in one `app` module, since the app is small (#1).
 
 ## Dependency injection
 
-Hilt provides dependencies, with KSP generating its code. It's Jetpack's recommended library, and a missing binding fails the build instead of the running app (#1).
+Hilt provides dependencies, with KSP generating its code. It's Jetpack's recommended library, and a missing binding fails the build, not the running app (#1).
 
 ## Tests
 
-Compose UI tests and screenshot tests run on Robolectric in `app/src/test`, so `./gradlew build` runs them without an emulator, and `robolectric.properties` makes them all run as a 1080p TV. Every run checks Roborazzi screenshots against the baselines in `app/src/test/screenshots`, and `./gradlew recordRoborazziDebug` records new ones (#1).
+Compose UI and screenshot tests run on Robolectric in `app/src/test`, so `./gradlew build` runs them without an emulator. They run as a 1080p TV on API 29 and 37, both ends of the supported range. Roborazzi screenshot tests fail when a screen differs from its baseline in `app/src/test/screenshots`, so visible changes show in the PR's diff (#1).

@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
@@ -26,7 +25,8 @@ fun HomeScreen(modifier: Modifier = Modifier) {
     }
 }
 
-@Preview(device = Devices.TV_1080p)
+// Devices.TV_1080p is 1920 x 1080 dp in ui-tooling-preview 1.12.1, twice what a 1080p TV reports (#1).
+@Preview(device = "spec:width=960dp,height=540dp,dpi=320")
 @Composable
 private fun HomeScreenPreview() {
     BcLauncherTheme {

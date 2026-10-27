@@ -38,7 +38,7 @@ android {
 }
 
 roborazzi {
-    // Baselines live in the repo so a screenshot change shows up in the PR's diff (#1).
+    // Baselines are committed with the code (ARCHITECTURE.md, Tests).
     outputDir.set(file("src/test/screenshots"))
 }
 
@@ -57,11 +57,18 @@ dependencies {
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.androidx.test.core)
-    // Compose's test rule brings Espresso 3.5.1, which calls InputManager.getInstance() by reflection.
-    // API 37 removed that method, so every Compose test failed until Espresso was raised to 3.7.0 (#1).
-    testImplementation(libs.androidx.test.espresso.core)
     testImplementation(libs.androidx.test.ext.junit)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)
+
+    constraints {
+        testImplementation(libs.androidx.test.espresso.core) {
+            because(
+                "Compose's test rule brings Espresso 3.5.1, which calls InputManager.getInstance() by " +
+                    "reflection. API 37 removed that method, so every Compose test failed until Espresso " +
+                    "was raised to 3.7.0 (#1).",
+            )
+        }
+    }
 }

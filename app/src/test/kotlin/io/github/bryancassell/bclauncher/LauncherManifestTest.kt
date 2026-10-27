@@ -7,7 +7,7 @@ import android.content.pm.PackageManager
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -27,8 +27,12 @@ class LauncherManifestTest {
     }
 
     @Test
-    fun appHasABannerForTvHomeScreens() {
-        assertNotEquals(0, context.applicationInfo.banner)
+    fun appHasABannerAtTheSizeTvHomeScreensUse() {
+        val banner = context.packageManager.getApplicationBanner(context.packageName)
+
+        // Android TV asks for a 320 x 180 px banner at xhdpi, the density robolectric.properties sets (#1).
+        assertNotNull(banner)
+        assertEquals(320 to 180, banner!!.intrinsicWidth to banner.intrinsicHeight)
     }
 
     @Test
