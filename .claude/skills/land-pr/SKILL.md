@@ -1,6 +1,6 @@
 ---
 name: land-pr
-description: Make one PR for a GitHub issue, from a new branch to merged. Implement it, open the PR, run two xhigh /code-review rounds that post their findings to the PR, then squash-merge once CI passes, asking the developer every question that needs their call.
+description: Make one PR for a GitHub issue, from a new branch to ready for the developer to merge. Implement it, open the PR, run two xhigh /code-review rounds that post their findings to the PR, then hand it to the developer once CI passes, asking the developer every question that needs their call. The developer gives it the final review and merges it.
 argument-hint: <issue-number>
 disable-model-invocation: true
 ---
@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 The issue number, N below, is `$ARGUMENTS`. If that isn't a single issue number, ask for one. A leading `#` can be dropped without asking.
 
-Make one PR for issue #N, from a new branch to merged, following CLAUDE.md's Git Development Workflow and Claude Code Behaviors. An issue can take more than one PR; this covers one. The merge at the end is automatic, so the questions you ask along the way are the developer's say in the change.
+Make one PR for issue #N, from a new branch to ready to merge, following CLAUDE.md's Git Development Workflow and Claude Code Behaviors. An issue can take more than one PR; this covers one. The developer gives the PR its final review and chooses when to merge it, so stop once it's ready.
 
 ## When to ask
 
@@ -104,3 +104,10 @@ Do this twice. Round 2 reviews the PR with round 1's fixes pushed.
 2. Judge each finding by the state it describes, not only by its example: disproving the example doesn't make the state unreachable. Fix it, or decline it with a reason. Ask before declining a correctness finding.
 3. `./gradlew build` passes, and the checks in step 2.6 are redone for anything the fixes changed. Commit and push.
 4. Edit the PR description in place. Add `## After the /code-review` (round 1) or `## After the second /code-review` (round 2), with lists headed "Fixed:", "Not changed, by agreement:" and "Not changed:", each item with its reason.
+
+## 5. Hand it to the developer
+
+The developer gives the PR its final review and chooses when to merge it. Don't merge it, turn on auto-merge or delete its branch, even once CI passes.
+
+1. Wait for CI on the last push with `gh pr checks <PR number> --watch`. Fix a failure this change caused, and ask about one it didn't clearly cause.
+2. Tell the developer the PR is ready to review: its link, whether CI passed, and anything that deserves a close look, such as the findings under "Not changed:".
