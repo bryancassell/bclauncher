@@ -1,0 +1,4 @@
+# Gradle's own defaults: the Unix start script needs LF and the Windows one CRLF (#1).
+/gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary

@@ -1,0 +1,7 @@
+<resources>
+    <color name="brand_background">#FF1E2A3A</color>
+    <color name="brand_tile">#FF8AB4F8</color>
+    <color name="brand_tile_focused">#FFFFFFFF</color>
+    <!-- DarkColorScheme.surface, which HomeScreen fills the screen with (#1). -->
+    <color name="window_background">#FF1C1B1F</color>
+</resources>

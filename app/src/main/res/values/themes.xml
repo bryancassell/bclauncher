@@ -1,0 +1,7 @@
+<resources>
+    <!-- Compose draws the UI. The window background is the color Compose fills the screen with first, so the
+         screen doesn't change color between the starting window and the first frame (#1). -->
+    <style name="Theme.BcLauncher" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>

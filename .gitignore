@@ -1,0 +1,15 @@
+# Gradle
+.gradle/
+.kotlin/
+build/
+local.properties
+
+# Android Studio writes most of .idea from the Gradle build or from per-user state, such as the
+# selected device and the Gradle JDK, so only files chosen for sharing are tracked (#1).
+*.iml
+/.idea/*
+!/.idea/vcs.xml
+/captures/
+
+# macOS
+.DS_Store

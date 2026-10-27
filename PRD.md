@@ -15,3 +15,10 @@ This project is a minimal replacement home screen for Google TV devices that foc
 - The home screen will include an option to launch into device settings
 - The home screen will not override the official launcher's support for bringing up an overlay when the user long presses the home button
 - The home screen will allow the user to set it to be the target for when the user presses the home button
+
+# Design decisions
+
+| Decision | Reason | Issues |
+|---|---|---|
+| The app is called "BC Launcher" on the TV. | It's the readable form of the repo's name, `bclauncher`. | #1 |
+| The app installs only on TVs: its manifest requires `android.software.leanback`. | It's a home screen for Google TV, with no use on a phone. | #1 |
