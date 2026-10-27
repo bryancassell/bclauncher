@@ -1,0 +1,14 @@
+root = true
+
+# Android's Kotlin style guide, which Android Studio's formatter also follows (#2).
+[*.{kt,kts}]
+ktlint_code_style = android_studio
+# The code uses trailing commas, as Kotlin's coding conventions encourage, so adding an item
+# changes one line. The android_studio style turns them off (#2).
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+# Compose functions are named like classes (#2).
+ktlint_function_naming_ignore_when_annotated_with = Composable
+# ktlint rejects wildcard imports, so Android Studio is told never to write them (#2).
+ij_kotlin_name_count_to_use_star_import = 2147483647
+ij_kotlin_name_count_to_use_star_import_for_members = 2147483647

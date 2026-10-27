@@ -1,9 +1,13 @@
+import com.android.build.api.artifact.ScopedArtifact
+import com.android.build.api.variant.ScopedArtifacts
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.hilt)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.roborazzi)
+    jacoco
 }
 
 android {
@@ -16,6 +20,22 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        debug {
+            enableUnitTestCoverage = true
+        }
+    }
+
+    // Each JaCoCo release supports class files up to some Java version, so JaCoCo is upgraded with
+    // the JDK the tests run on. Without this, it's 0.8.15 with Gradle 9.8.2 and AGP 9.4.1. AGP
+    // passes it to Gradle's jacoco plugin when it sets up the unit tests, replacing any
+    // jacoco.toolVersion (#2).
+    testCoverage {
+        jacocoVersion = libs.versions.jacoco.get()
     }
 
     buildFeatures {
@@ -42,6 +62,90 @@ roborazzi {
     outputDir.set(file("src/test/screenshots"))
 }
 
+// The coverage check skips code no test can call directly: the components and aggregation
+// classes Hilt generates, and previews, which only Android Studio runs. Only previews under ui/
+// are skipped, so data-layer code such as TV preview channels can't drop out by its file name
+// (ARCHITECTURE.md, Tests) (#2).
+val coverageExclusions = listOf(
+    "**/*_HiltComponents*.class",
+    "**/*_ComponentTreeDeps*.class",
+    "dagger/hilt/internal/**",
+    "hilt_aggregated_deps/**",
+    "**/ui/**/*PreviewsKt*.class",
+)
+
+// AGP's own unit test coverage report can't skip classes or fail the build, so these tasks read
+// its execution data. They analyze the variant's final classes, after Hilt rewrites them, which
+// are the classes the tests ran (#2).
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        val variantName = variant.name.replaceFirstChar(Char::titlecase)
+        val unitTest = "test${variantName}UnitTest"
+
+        val report = tasks.register<JacocoReport>("jacoco${variantName}CoverageReport") {
+            reports {
+                html.required = true
+                xml.required = true
+            }
+        }
+        val verification = tasks.register<JacocoCoverageVerification>(
+            "jacoco${variantName}CoverageVerification",
+        ) {
+            violationRules {
+                rule {
+                    element = "CLASS"
+                    limit {
+                        counter = "LINE"
+                        minimum = "0.80".toBigDecimal()
+                    }
+                }
+            }
+        }
+
+        // Locals, because the configuration cache can't store a lambda that refers to the script.
+        val objectFactory = objects
+        val exclusions = coverageExclusions
+        listOf(report, verification).forEach { task ->
+            val jars = objectFactory.listProperty<RegularFile>()
+            val dirs = objectFactory.listProperty<Directory>()
+            task.configure {
+                // Takes the file from the test task, wherever its JaCoCo extension writes it. This
+                // only orders the tasks, so dependsOn is needed too.
+                executionData(tasks.getByName(unitTest))
+                dependsOn(unitTest)
+                // JaCoCo's tasks skip themselves when there's no execution data, which would let
+                // the build pass without a coverage check.
+                setOnlyIf { true }
+                sourceDirectories.setFrom("src/main/kotlin")
+                // The jars hold only R classes, which have no lines to cover.
+                classDirectories.setFrom(
+                    jars,
+                    dirs.map {
+                        it.map { dir -> objectFactory.fileTree().from(dir).exclude(exclusions) }
+                    },
+                )
+            }
+            variant.artifacts
+                .forScope(ScopedArtifacts.Scope.PROJECT)
+                .use(task)
+                .toGet(ScopedArtifact.CLASSES, { jars }, { dirs })
+        }
+
+        tasks.named("check") { dependsOn(verification) }
+    }
+}
+
+tasks.withType<Test>().configureEach {
+    extensions.configure<JacocoTaskExtension> {
+        // Robolectric loads the app's classes through its own class loader, which gives them no
+        // code source. Without this, JaCoCo skips them and every class reads 0% (#2).
+        isIncludeNoLocationClasses = true
+        // That would also instrument every class the sandbox loads, including the JDK's generated
+        // reflection accessors, which breaks creating objects the way mocking libraries do (#2).
+        includes = listOf("io.github.bryancassell.bclauncher.*")
+    }
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
@@ -62,13 +166,18 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)
 
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+
     constraints {
-        testImplementation(libs.androidx.test.espresso.core) {
-            because(
-                "Compose's test rule brings Espresso 3.5.1, which calls InputManager.getInstance() by " +
-                    "reflection. API 37 removed that method, so every Compose test failed until Espresso " +
-                    "was raised to 3.7.0 (#1).",
-            )
-        }
+        val espressoReason =
+            "Compose's test rule brings Espresso 3.5.1, which calls " +
+                "InputManager.getInstance() by reflection. API 37 removed that method, so " +
+                "every Compose test failed until Espresso was raised to 3.7.0 (#1)."
+        testImplementation(libs.androidx.test.espresso.core) { because(espressoReason) }
+        androidTestImplementation(libs.androidx.test.espresso.core) { because(espressoReason) }
     }
 }

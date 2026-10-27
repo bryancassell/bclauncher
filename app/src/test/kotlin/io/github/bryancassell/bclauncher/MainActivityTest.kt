@@ -25,7 +25,9 @@ class MainActivityTest {
 
     @Test
     fun windowBackgroundMatchesTheSurfaceComposeDrawsFirst() {
-        val attributes = composeRule.activity.theme.obtainStyledAttributes(intArrayOf(android.R.attr.windowBackground))
+        val attributes = composeRule.activity.theme.obtainStyledAttributes(
+            intArrayOf(android.R.attr.windowBackground),
+        )
         val windowBackground = attributes.getColor(0, 0)
         attributes.recycle()
 

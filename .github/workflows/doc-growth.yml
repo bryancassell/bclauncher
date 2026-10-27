@@ -1,0 +1,48 @@
+name: Doc growth
+
+# Its own workflow, so adding or removing a label reruns only this check. "edited" reruns it when
+# the PR's base branch changes, since it compares against the base.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  doc-growth:
+    name: Doc growth
+    runs-on: ubuntu-latest
+    steps:
+      # The PR's merge commit and its first parent, the tip of main.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      # CLAUDE.md, What goes where: a PR that makes either file longer needs the developer's
+      # agreement and the grows-docs label.
+      - name: Compare word counts with main
+        # Unlike the default shell, bash here also sets pipefail, so a failed git show stops the job
+        # rather than counting 0 words.
+        shell: bash
+        env:
+          GROWS_DOCS: ${{ contains(github.event.pull_request.labels.*.name, 'grows-docs') }}
+        run: |
+          git rev-parse --verify --quiet HEAD^1 > /dev/null
+          status=0
+          for doc in ARCHITECTURE.md PRD.md; do
+            # A doc that's new or deleted counts as 0 words on that side.
+            before=0
+            if git cat-file -e "HEAD^1:$doc" 2> /dev/null; then
+              before=$(git show "HEAD^1:$doc" | wc -w)
+            fi
+            after=0
+            if [ -f "$doc" ]; then
+              after=$(wc -w < "$doc")
+            fi
+            echo "$doc: $before -> $after words"
+            if [ "$after" -gt "$before" ] && [ "$GROWS_DOCS" != true ]; then
+              echo "::error file=$doc::$doc grew from $before to $after words without the grows-docs label."
+              status=1
+            fi
+          done
+          exit $status

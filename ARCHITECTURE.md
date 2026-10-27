@@ -45,4 +45,6 @@ Hilt provides dependencies, with KSP generating its code. It's Jetpack's recomme
 
 ## Tests
 
-Compose UI and screenshot tests run on Robolectric in `app/src/test`, so `./gradlew build` runs them without an emulator. They run as a 1080p TV on API 29 and 37, both ends of the supported range. Roborazzi screenshot tests fail when a screen differs from its baseline in `app/src/test/screenshots`, so visible changes show in the PR's diff (#1).
+Compose UI and screenshot tests run on Robolectric in `app/src/test`, so `./gradlew build` runs them without an emulator. They run as a 1080p TV on API 29 and 37, both ends of the supported range. Roborazzi screenshot tests fail when a screen differs from its baseline in `app/src/test/screenshots`, so visible changes show in the PR's diff (#1). Robolectric draws text differently on each OS, so only CI records and checks them, on Linux (#2).
+
+Compose previews go in a `*Previews.kt` file under `ui`, which the 80% coverage check skips, since no test runs them (#2).
