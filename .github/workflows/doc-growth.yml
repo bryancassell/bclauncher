@@ -1,0 +1,36 @@
+name: Doc growth
+
+# Its own workflow, so adding or removing a label reruns only this check.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  doc-growth:
+    name: Doc growth
+    runs-on: ubuntu-latest
+    steps:
+      # The PR's merge commit and its first parent, the tip of main.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      # CLAUDE.md, What goes where: a PR that makes either file longer needs the developer's
+      # agreement and the grows-docs label.
+      - name: Compare word counts with main
+        env:
+          GROWS_DOCS: ${{ contains(github.event.pull_request.labels.*.name, 'grows-docs') }}
+        run: |
+          status=0
+          for doc in ARCHITECTURE.md PRD.md; do
+            before=$(git show "HEAD^1:$doc" | wc -w)
+            after=$(wc -w < "$doc")
+            echo "$doc: $before -> $after words"
+            if [ "$after" -gt "$before" ] && [ "$GROWS_DOCS" != true ]; then
+              echo "::error file=$doc::$doc grew from $before to $after words without the grows-docs label."
+              status=1
+            fi
+          done
+          exit $status
