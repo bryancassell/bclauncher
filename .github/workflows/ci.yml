@@ -6,6 +6,9 @@ on:
   push:
     branches: [main]
 
+# Gradle starts on the runner's JDK and runs the build on the JDK that
+# gradle/gradle-daemon-jvm.properties names, downloading it if needed, so no step sets up Java.
+
 # A new push to a PR cancels the run for its previous push.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,11 +24,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
         with:
-          distribution: temurin
-          java-version: 25
-      - uses: gradle/actions/setup-gradle@v6
+          # The default caching is proprietary; this one is MIT-licensed, like the project.
+          cache-provider: basic
       # Only CI checks screenshots, because their baselines are recorded on Linux
       # (ARCHITECTURE.md, Tests).
       - run: ./gradlew build -Proborazzi.test.verify=true
@@ -43,11 +45,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
         with:
-          distribution: temurin
-          java-version: 25
-      - uses: gradle/actions/setup-gradle@v6
+          # The default caching is proprietary; this one is MIT-licensed, like the project.
+          cache-provider: basic
       # Lets the emulator use hardware virtualization, as the emulator action's README says to.
       - name: Enable KVM
         run: |

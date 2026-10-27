@@ -1,9 +1,10 @@
 name: Doc growth
 
-# Its own workflow, so adding or removing a label reruns only this check.
+# Its own workflow, so adding or removing a label reruns only this check. "edited" reruns it when
+# the PR's base branch changes, since it compares against the base.
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
 
 permissions:
   contents: read

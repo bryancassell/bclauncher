@@ -4,12 +4,12 @@ How to build and check BC Launcher, and what CI runs.
 
 ## Building and checking a change
 
-Gradle runs on JDK 25, pinned in `gradle/gradle-daemon-jvm.properties`, and downloads it if it's missing.
+Gradle runs on JDK 25, pinned in `gradle/gradle-daemon-jvm.properties`, and downloads it if it's missing. CI relies on the same file.
 
 `./gradlew build` checks a change. It runs:
 
 - the unit tests in `app/src/test`, on Robolectric
-- the coverage check, which fails when a class has under 80% line coverage. It skips the classes Hilt generates, and `*Previews.kt` files under `ui/`.
+- the coverage check, which fails when a class has under 80% line coverage. It skips the components and aggregation classes Hilt generates, and `*Previews.kt` files under `ui/`.
 - lint
 - Spotless, which checks formatting with ktlint in the `android_studio` style set in `.editorconfig`.
 
@@ -21,13 +21,13 @@ Other tasks:
 
 ## Screenshots
 
-Robolectric draws text differently on macOS and Linux, so only CI checks screenshots, and their baselines in `app/src/test/screenshots` are recorded on CI. A local `./gradlew build` doesn't compare them.
+Only CI records and checks the baselines in `app/src/test/screenshots` (ARCHITECTURE.md, Tests), so a local `./gradlew build` doesn't compare them.
 
 When CI's Build job fails on a screenshot, its `screenshot-comparisons` artifact has each changed screen beside its baseline.
 
 To record baselines after a change to how a screen looks:
 
-1. Push the branch, then run `gh workflow run record-screenshots.yml --ref <branch>`.
+1. Merge `main` into the branch and push it, so the baselines match the merge commit CI checks. Then run `gh workflow run record-screenshots.yml --ref <branch>`.
 2. When the run finishes (`gh run watch`), replace the baselines with what it recorded:
    `rm -rf app/src/test/screenshots && gh run download <run-id> -n screenshots -D app/src/test/screenshots`
 3. Check the images in `git diff`, then commit them.

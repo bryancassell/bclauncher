@@ -30,6 +30,14 @@ android {
         }
     }
 
+    // Each JaCoCo release supports class files up to some Java version, so JaCoCo is upgraded with
+    // the JDK the tests run on. Without this, it's 0.8.15 with Gradle 9.8.2 and AGP 9.4.1. AGP
+    // passes it to Gradle's jacoco plugin when it sets up the unit tests, replacing any
+    // jacoco.toolVersion (#2).
+    testCoverage {
+        jacocoVersion = libs.versions.jacoco.get()
+    }
+
     buildFeatures {
         compose = true
     }
@@ -47,13 +55,6 @@ android {
             }
         }
     }
-}
-
-jacoco {
-    // Each JaCoCo release supports class files up to some Java version, so the agent is upgraded
-    // with the JDK the tests run on. Without this, it's 0.8.15 with Gradle 9.8.2 and AGP 9.4.1.
-    // android.testCoverage.jacocoVersion doesn't change the agent the unit tests run (#2).
-    toolVersion = libs.versions.jacoco.get()
 }
 
 roborazzi {

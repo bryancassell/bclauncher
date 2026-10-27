@@ -12,8 +12,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Installs and opens the app on a Google TV emulator, which Robolectric can't stand in for: the
- * install needs a device with leanback, and the TV app list's intent comes from the real system.
+ * Opens the app on a Google TV emulator, through the launch intent that Google TV's own package
+ * manager returns for the TV app list, on the real framework rather than Robolectric's.
  */
 @RunWith(AndroidJUnit4::class)
 class GoogleTvLaunchTest {
