@@ -14,18 +14,17 @@ import android.os.Handler
 import android.os.Looper
 import android.os.UserHandle
 import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import javax.inject.Inject
 
 /**
  * Reads the apps from PackageManager. The manifest's `<queries>` makes their packages visible from API 30,
  * without `QUERY_ALL_PACKAGES`.
  */
-class PackageManagerSource @Inject constructor(
-    @ApplicationContext private val context: Context,
-) : PackageSource {
+class PackageManagerSource @Inject constructor(@ApplicationContext private val context: Context) :
+    PackageSource {
     private val packageManager = context.packageManager
 
     override fun tvLauncherActivities(): List<InstalledApp> {
@@ -53,9 +52,9 @@ class PackageManagerSource @Inject constructor(
      *   permission when the activity doesn't set its own.
      */
     private fun canLaunch(activity: ActivityInfo): Boolean {
-        val permission = activity.permission
-        return activity.exported &&
-            (permission == null || context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED)
+        if (!activity.exported) return false
+        val permission = activity.permission ?: return true
+        return context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun queryActivities(intent: Intent): List<ResolveInfo> =
@@ -123,9 +122,15 @@ internal class PackageChangeCallback(private val onChange: () -> Unit) : Launche
 
     override fun onPackageChanged(packageName: String, user: UserHandle) = onChange()
 
-    override fun onPackagesAvailable(packageNames: Array<out String>, user: UserHandle, replacing: Boolean) =
-        onChange()
+    override fun onPackagesAvailable(
+        packageNames: Array<out String>,
+        user: UserHandle,
+        replacing: Boolean,
+    ) = onChange()
 
-    override fun onPackagesUnavailable(packageNames: Array<out String>, user: UserHandle, replacing: Boolean) =
-        onChange()
+    override fun onPackagesUnavailable(
+        packageNames: Array<out String>,
+        user: UserHandle,
+        replacing: Boolean,
+    ) = onChange()
 }

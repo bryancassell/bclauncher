@@ -17,6 +17,9 @@ class InstalledAppTest {
         assertEquals(Intent.ACTION_MAIN, intent.action)
         assertEquals(setOf(Intent.CATEGORY_LEANBACK_LAUNCHER), intent.categories)
         assertEquals(app.component, intent.component)
-        assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED, intent.flags)
+        assertEquals(
+            Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
+            intent.flags,
+        )
     }
 }

@@ -5,9 +5,9 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import javax.inject.Qualifier
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import javax.inject.Qualifier
 
 /** Qualifies the dispatcher for blocking calls (ARCHITECTURE.md, Dependency injection). */
 @Qualifier
@@ -22,10 +22,13 @@ object DispatchersModule {
     fun ioDispatcher(): CoroutineDispatcher = Dispatchers.IO
 }
 
-/** Its own module, so activity tests can replace it with a fake source. */
+/**
+ * Its own module, so activity tests can replace it with a fake source. An interface rather than an abstract class,
+ * since an abstract class's constructor counts as a line the coverage check needs a test to run (#4).
+ */
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class PackageSourceModule {
+interface PackageSourceModule {
     @Binds
-    abstract fun packageSource(source: PackageManagerSource): PackageSource
+    fun packageSource(source: PackageManagerSource): PackageSource
 }

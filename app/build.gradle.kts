@@ -66,9 +66,13 @@ roborazzi {
 // classes Hilt generates, and previews, which only Android Studio runs. Only previews under ui/
 // are skipped, so data-layer code such as TV preview channels can't drop out by its file name
 // (ARCHITECTURE.md, Tests) (#2).
+// Dagger's InstanceHolder serves a no-argument @Provides method's factory only through
+// create(), for an injected Provider or Lazy. Hilt's components call the static method instead,
+// so no test reaches it (#4).
 val coverageExclusions = listOf(
     "**/*_HiltComponents*.class",
     "**/*_ComponentTreeDeps*.class",
+    "**/*Factory\$InstanceHolder.class",
     "dagger/hilt/internal/**",
     "hilt_aggregated_deps/**",
     "**/ui/**/*PreviewsKt*.class",

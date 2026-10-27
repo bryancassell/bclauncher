@@ -3,6 +3,7 @@ package io.github.bryancassell.bclauncher.data
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import java.util.Locale
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -15,7 +16,6 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.util.Locale
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -38,7 +38,10 @@ class InstalledAppsRepositoryTest {
 
     @Test
     fun leavesThisAppOut() = runTest {
-        packageSource.setApps(fakeApp("BC Launcher", packageName = context.packageName), fakeApp("YouTube"))
+        packageSource.setApps(
+            fakeApp("BC Launcher", packageName = context.packageName),
+            fakeApp("YouTube"),
+        )
 
         val apps = repository().apps.first()
 
@@ -63,7 +66,10 @@ class InstalledAppsRepositoryTest {
         packageSource.setApps(fakeApp("YouTube"), fakeApp("Netflix"))
         packageSource.setApps(fakeApp("Netflix"))
 
-        assertEquals(listOf(listOf("YouTube"), listOf("Netflix", "YouTube"), listOf("Netflix")), emissions)
+        assertEquals(
+            listOf(listOf("YouTube"), listOf("Netflix", "YouTube"), listOf("Netflix")),
+            emissions,
+        )
     }
 
     @Test

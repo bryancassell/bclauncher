@@ -8,7 +8,7 @@ import dagger.hilt.testing.TestInstallIn
 /** Gives every Hilt test the fake source, so activity tests choose the installed apps. */
 @Module
 @TestInstallIn(components = [SingletonComponent::class], replaces = [PackageSourceModule::class])
-abstract class FakePackageSourceModule {
+interface FakePackageSourceModule {
     @Binds
-    abstract fun packageSource(source: FakePackageSource): PackageSource
+    fun packageSource(source: FakePackageSource): PackageSource
 }

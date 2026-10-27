@@ -2,13 +2,13 @@ package io.github.bryancassell.bclauncher.data
 
 import android.content.ComponentName
 import android.graphics.drawable.ColorDrawable
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 
 /** A [PackageSource] whose apps the test sets. In a Hilt test, the app gets this same instance. */
 @Singleton

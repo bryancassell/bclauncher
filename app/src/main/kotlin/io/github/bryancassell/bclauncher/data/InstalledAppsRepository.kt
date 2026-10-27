@@ -2,13 +2,13 @@ package io.github.bryancassell.bclauncher.data
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.text.Collator
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-import java.text.Collator
-import javax.inject.Inject
 
 /** The apps the home screen lists, kept current as apps are installed, updated or removed. */
 class InstalledAppsRepository @Inject constructor(

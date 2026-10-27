@@ -135,7 +135,11 @@ class PackageManagerSourceTest {
         val activityBanner = ColorDrawable()
         packageManager.addDrawableResolution("com.example.tv", APPLICATION_BANNER, ColorDrawable())
         packageManager.addDrawableResolution("com.example.tv", ACTIVITY_BANNER, activityBanner)
-        install("com.example.tv", applicationBanner = APPLICATION_BANNER, activityBanner = ACTIVITY_BANNER)
+        install(
+            "com.example.tv",
+            applicationBanner = APPLICATION_BANNER,
+            activityBanner = ACTIVITY_BANNER,
+        )
 
         assertSame(activityBanner, listedApp("com.example.tv").banner)
     }
