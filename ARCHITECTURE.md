@@ -33,7 +33,7 @@ The UI uses Compose for TV. `MaterialTheme`, `Surface`, `Text` and other Materia
 
 The code follows Android's [Guide to app architecture](https://developer.android.com/topic/architecture):
 
-- The UI layer is Compose screens and their ViewModels, in `ui/<screen>`. A ViewModel exposes its screen's state as a `StateFlow`.
+- The UI layer is Compose screens and their ViewModels, in `ui/<screen>`. A ViewModel exposes its screen's state as a `StateFlow`. A screen starts other apps' activities itself, with an intent from the data layer, and tells its ViewModel only when one fails, since Android's [UI events guide](https://developer.android.com/topic/architecture/ui-layer/events) treats navigation as UI logic (#5).
 - The data layer is repositories, in `data`.
 - A domain layer waits until two ViewModels need the same logic.
 

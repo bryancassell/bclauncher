@@ -4,14 +4,19 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -92,6 +97,31 @@ class InstalledAppsRepositoryTest {
 
         assertEquals(3, packageSource.loads)
         assertEquals(listOf(emptyList(), listOf("YouTube"), listOf("Netflix")), emissions)
+    }
+
+    // Real threads, since a load blocks its thread and only overlaps another on a different one.
+    @Test
+    fun aLoadWaitsForOneACancelledCollectionLeftRunning() = runBlocking {
+        val repository = InstalledAppsRepository(context, packageSource, Dispatchers.IO)
+        val firstLoadStarted = CountDownLatch(1)
+        val finishFirstLoad = CountDownLatch(1)
+        packageSource.duringNextLoad {
+            firstLoadStarted.countDown()
+            finishFirstLoad.await()
+        }
+        val first = launch(Dispatchers.Default) { repository.apps.first() }
+        firstLoadStarted.await()
+
+        // As when flatMapLatest restarts the collection: cancelling doesn't stop the blocked load.
+        first.cancel()
+        val second = async(Dispatchers.Default) { repository.apps.first() }
+        // Without waiting, the second load runs now, alongside the first.
+        withTimeoutOrNull(500) { second.await() }
+        finishFirstLoad.countDown()
+        second.await()
+
+        assertEquals(2, packageSource.loads)
+        assertEquals(1, packageSource.mostLoadsAtOnce)
     }
 
     @Test

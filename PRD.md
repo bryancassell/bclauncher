@@ -24,3 +24,6 @@ This project is a minimal replacement home screen for Google TV devices that foc
 | The app installs only on TVs: its manifest requires `android.software.leanback`. | It's a home screen for Google TV, with no use on a phone. | #1 |
 | The home screen lists the apps that open from a TV's app list (`CATEGORY_LEANBACK_LAUNCHER`), except BC Launcher itself. | They're the apps built for a remote, and the ones Google TV shows. Opening BC Launcher from its own list would do nothing. | #4 |
 | An app's tile shows its banner, or its icon when it has none. | Android TV requires every app to provide a 320 × 180 banner with its name in it. | #4 |
+| Apps show as tiles, six to a row. If one doesn't open, a message says so and the grid reloads. | 124 dp tiles, a card width in Android's TV layout guide, fit 30 apps on screen. An update can remove an app's TV activity unannounced, and the reload drops its tile. | #5 |
+| Back on the home screen does nothing. | A home screen has nothing behind it to go back to. | #5 |
+| If the apps don't load, a Try again button loads them again. | Once BC Launcher is the Home button's target, nothing else would leave the message. | #5 |
