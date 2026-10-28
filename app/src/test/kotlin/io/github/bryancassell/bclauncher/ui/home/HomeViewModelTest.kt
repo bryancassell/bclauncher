@@ -1,20 +1,26 @@
 package io.github.bryancassell.bclauncher.ui.home
 
 import android.content.Context
+import android.util.Log
+import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.bryancassell.bclauncher.MainDispatcherRule
 import io.github.bryancassell.bclauncher.data.FakePackageSource
 import io.github.bryancassell.bclauncher.data.InstalledAppsRepository
 import io.github.bryancassell.bclauncher.data.fakeApp
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.shadows.ShadowLog
 
 @RunWith(AndroidJUnit4::class)
 class HomeViewModelTest {
@@ -30,6 +36,11 @@ class HomeViewModelTest {
         HomeViewModel(
             InstalledAppsRepository(context, packageSource, mainDispatcherRule.dispatcher),
         )
+    }
+
+    @After
+    fun stopViewModel() {
+        viewModel.viewModelScope.cancel()
     }
 
     private val contentLabels: List<String>
@@ -71,6 +82,10 @@ class HomeViewModelTest {
         collectState()
 
         assertEquals(HomeUiState.Error, viewModel.uiState.value)
+        // Logged, so a release build that R8 broke shows up in logcat (docs/toolchain.md, Checking a release build).
+        val log = ShadowLog.getLogsForTag("HomeViewModel").single()
+        assertEquals(Log.ERROR, log.type)
+        assertTrue(log.throwable is OutOfMemoryError)
     }
 
     @Test

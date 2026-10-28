@@ -7,9 +7,6 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
-import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.performKeyInput
-import androidx.compose.ui.test.pressKey
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -23,6 +20,7 @@ import io.github.bryancassell.bclauncher.data.FakePackageSource
 import io.github.bryancassell.bclauncher.data.IoDispatcher
 import io.github.bryancassell.bclauncher.data.fakeApp
 import io.github.bryancassell.bclauncher.ui.home.onTile
+import io.github.bryancassell.bclauncher.ui.home.pressKeys
 import io.github.bryancassell.bclauncher.ui.theme.DarkColorScheme
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
@@ -77,10 +75,6 @@ class MainActivityTest {
         composeRule.waitForIdle()
     }
 
-    private fun pressKeys(keys: List<Key>) {
-        composeRule.onRoot().performKeyInput { keys.forEach { pressKey(it) } }
-    }
-
     @Test
     fun opensToTheInstalledApps() {
         composeRule.onTile("Netflix").assertIsDisplayed()
@@ -90,7 +84,7 @@ class MainActivityTest {
 
     @Test
     fun selectingATileOpensItsApp() {
-        pressKeys(listOf(Key.DirectionRight, Key.DirectionCenter))
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionCenter))
 
         val started = shadowOf(application).nextStartedActivity
         assertTrue(started.filterEquals(plex.launchIntent))
@@ -104,7 +98,7 @@ class MainActivityTest {
         packageSource.setAppsWithoutReporting(netflix, youTube)
         shadowOf(application).checkActivities(true)
 
-        pressKeys(listOf(Key.DirectionRight, Key.DirectionCenter))
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionCenter))
 
         assertEquals(
             application.getString(R.string.app_did_not_open, "Plex"),
@@ -124,7 +118,7 @@ class MainActivityTest {
 
     @Test
     fun focusIsOnTheSameTileAfterReturningFromAnApp() {
-        pressKeys(listOf(Key.DirectionRight, Key.DirectionCenter))
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionCenter))
 
         // The opened app covers the home screen, then closes.
         composeRule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
@@ -135,7 +129,7 @@ class MainActivityTest {
 
     @Test
     fun focusIsOnTheSameTileAfterTheHomeScreenIsRecreatedTwice() {
-        pressKeys(listOf(Key.DirectionRight, Key.DirectionCenter))
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionCenter))
 
         // The system can relaunch it for two configuration changes in a row, as when an input device is added.
         composeRule.activityRule.scenario.recreate()
@@ -147,7 +141,7 @@ class MainActivityTest {
     @Test
     fun focusStaysOnTheSameTileWhenTheHomeScreenIsRecreated() {
         // A configuration change, such as the font size, while the user browses the grid.
-        pressKeys(listOf(Key.DirectionRight))
+        composeRule.pressKeys(listOf(Key.DirectionRight))
 
         composeRule.activityRule.scenario.recreate()
 

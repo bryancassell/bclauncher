@@ -3,13 +3,16 @@ package io.github.bryancassell.bclauncher.ui.home
 import android.content.ActivityNotFoundException
 import android.content.ContextWrapper
 import android.content.Intent
+import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.shadows.ShadowLog
 
 @RunWith(AndroidJUnit4::class)
 class StartActivitySafelyTest {
@@ -31,6 +34,17 @@ class StartActivitySafelyTest {
     @Test
     fun failsWhenBcLauncherMayNotStartTheActivity() {
         assertFalse(FakeContext(SecurityException()).startActivitySafely(intent))
+    }
+
+    @Test
+    fun logsWhyTheActivityDidNotStart() {
+        val failure = ActivityNotFoundException()
+
+        FakeContext(failure).startActivitySafely(intent)
+
+        val log = ShadowLog.getLogsForTag("HomeScreen").single()
+        assertEquals(Log.WARN, log.type)
+        assertSame(failure, log.throwable)
     }
 
     private class FakeContext(private val failure: RuntimeException?) :

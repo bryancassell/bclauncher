@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** The apps the home screen lists, kept current as apps are installed, updated or removed. */
 class InstalledAppsRepository @Inject constructor(
@@ -16,6 +18,11 @@ class InstalledAppsRepository @Inject constructor(
     private val packageSource: PackageSource,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) {
+    // Cancelling a collection doesn't stop its load, since PackageManager's calls block. A load waits here for one a
+    // cancelled collection left running, so restarting the collection, as the home screen's reloads do, doesn't run
+    // two loads of every label and image at once (#5).
+    private val loading = Mutex()
+
     /**
      * Every app with a TV launch activity except this one, by label, emitted again after each package or language
      * change (PRD.md, Design decisions). Updating an app sends several changes in a row, so changes that arrive
@@ -23,7 +30,7 @@ class InstalledAppsRepository @Inject constructor(
      */
     val apps: Flow<List<InstalledApp>> = packageSource.changes
         .conflate()
-        .map { loadApps() }
+        .map { loading.withLock { loadApps() } }
         .flowOn(ioDispatcher)
 
     private fun loadApps(): List<InstalledApp> {

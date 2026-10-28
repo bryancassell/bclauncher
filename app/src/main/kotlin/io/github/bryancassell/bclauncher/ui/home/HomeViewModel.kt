@@ -1,5 +1,6 @@
 package io.github.bryancassell.bclauncher.ui.home
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -30,6 +31,8 @@ sealed interface HomeUiState {
     data object Error : HomeUiState
 }
 
+private const val TAG = "HomeViewModel"
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(repository: InstalledAppsRepository) : ViewModel() {
     // Each new value restarts collecting the apps, which loads them again.
@@ -48,8 +51,12 @@ class HomeViewModel @Inject constructor(repository: InstalledAppsRepository) : V
                 }
                 // PackageManager catches the exceptions that loading a label or an image throws, so what gets here
                 // is an Error such as OutOfMemoryError (#4). Caught inside flatMapLatest, so a failed load ends only
-                // this collection, and retry() can start another.
-                .catch { emit(HomeUiState.Error) }
+                // this collection, and retry() can start another. Logged, so it shows in logcat, such as a class R8
+                // removed from a release build.
+                .catch { error ->
+                    Log.e(TAG, "Couldn't load the apps", error)
+                    emit(HomeUiState.Error)
+                }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState.Loading)
 

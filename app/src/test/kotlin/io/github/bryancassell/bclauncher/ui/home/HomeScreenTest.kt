@@ -36,6 +36,11 @@ import org.junit.runner.RunWith
 fun SemanticsNodeInteractionsProvider.onTile(label: String): SemanticsNodeInteraction =
     onNode(hasClickAction() and (hasContentDescription(label) or hasText(label)))
 
+/** Presses [keys] on the remote, in order. */
+fun SemanticsNodeInteractionsProvider.pressKeys(keys: List<Key>) {
+    onRoot().performKeyInput { keys.forEach { pressKey(it) } }
+}
+
 @OptIn(ExperimentalTestApi::class)
 @RunWith(AndroidJUnit4::class)
 class HomeScreenTest {
@@ -64,10 +69,6 @@ class HomeScreenTest {
     // Apps with banners, named App 1 to App [count].
     private fun bannerApps(count: Int) =
         (1..count).map { fakeApp("App $it").copy(banner = ColorDrawable()) }
-
-    private fun pressKeys(keys: List<Key>) {
-        composeRule.onRoot().performKeyInput { keys.forEach { pressKey(it) } }
-    }
 
     @Test
     fun showsNothingWhileLoading() {
@@ -100,7 +101,7 @@ class HomeScreenTest {
     fun selectTriesAgainAfterTheAppsDidNotLoad() {
         showScreen(HomeUiState.Error)
 
-        pressKeys(listOf(Key.DirectionCenter))
+        composeRule.pressKeys(listOf(Key.DirectionCenter))
 
         assertEquals(1, retries)
     }
@@ -131,10 +132,10 @@ class HomeScreenTest {
     fun theDPadMovesFocusAcrossSixAppsToARow() {
         showScreen(HomeUiState.Content(bannerApps(8)))
 
-        pressKeys(listOf(Key.DirectionRight))
+        composeRule.pressKeys(listOf(Key.DirectionRight))
         composeRule.onTile("App 2").assertIsFocused()
 
-        pressKeys(listOf(Key.DirectionDown))
+        composeRule.pressKeys(listOf(Key.DirectionDown))
         composeRule.onTile("App 8").assertIsFocused()
     }
 
@@ -143,7 +144,7 @@ class HomeScreenTest {
         val apps = bannerApps(3)
         showScreen(HomeUiState.Content(apps))
 
-        pressKeys(listOf(Key.DirectionRight, Key.DirectionCenter))
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionCenter))
 
         assertEquals(listOf(apps[1]), clicked)
     }
@@ -152,7 +153,7 @@ class HomeScreenTest {
     fun focusMovesToTheTileThatTakesTheRemovedTilesPlace() {
         val apps = bannerApps(3)
         showScreen(HomeUiState.Content(apps))
-        pressKeys(listOf(Key.DirectionRight))
+        composeRule.pressKeys(listOf(Key.DirectionRight))
 
         uiState = HomeUiState.Content(apps - apps[1])
 
@@ -163,7 +164,7 @@ class HomeScreenTest {
     fun focusMovesToTheTileBeforeWhenTheLastTileIsRemoved() {
         val apps = bannerApps(3)
         showScreen(HomeUiState.Content(apps))
-        pressKeys(listOf(Key.DirectionRight, Key.DirectionRight))
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionRight))
 
         uiState = HomeUiState.Content(apps - apps[2])
 
@@ -174,10 +175,22 @@ class HomeScreenTest {
     fun focusStaysOnItsTileWhenAnotherTileIsRemoved() {
         val apps = bannerApps(3)
         showScreen(HomeUiState.Content(apps))
-        pressKeys(listOf(Key.DirectionRight, Key.DirectionRight))
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionRight))
 
         uiState = HomeUiState.Content(apps - apps[0])
 
         composeRule.onTile("App 3").assertIsFocused()
+    }
+
+    @Test
+    fun focusMovesToTheNextRemainingTileWhenTilesBeforeTheFocusedOneGoToo() {
+        val apps = bannerApps(6)
+        showScreen(HomeUiState.Content(apps))
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionRight, Key.DirectionRight))
+
+        // One reload drops App 1 and the focused App 4, so App 5 takes App 4's place.
+        uiState = HomeUiState.Content(apps - apps[0] - apps[3])
+
+        composeRule.onTile("App 5").assertIsFocused()
     }
 }

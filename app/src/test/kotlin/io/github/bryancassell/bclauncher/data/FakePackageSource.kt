@@ -21,17 +21,27 @@ class FakePackageSource @Inject constructor() : PackageSource {
     private var nextLoadAction: (() -> Unit)? = null
 
     private val loadCount = AtomicInteger()
+    private val runningLoads = AtomicInteger()
+    private val mostRunningLoads = AtomicInteger()
 
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
 
     /** How many times the apps were read. */
     val loads: Int get() = loadCount.get()
 
+    /** The most loads that ran at the same time. */
+    val mostLoadsAtOnce: Int get() = mostRunningLoads.get()
+
     override fun tvLauncherActivities(): List<InstalledApp> {
         loadCount.incrementAndGet()
-        val apps = activities
-        nextLoadAction?.also { nextLoadAction = null }?.invoke()
-        return apps
+        mostRunningLoads.accumulateAndGet(runningLoads.incrementAndGet(), ::maxOf)
+        try {
+            val apps = activities
+            nextLoadAction?.also { nextLoadAction = null }?.invoke()
+            return apps
+        } finally {
+            runningLoads.decrementAndGet()
+        }
     }
 
     // A callbackFlow, like PackageManagerSource's, so a change goes straight into the channel the repository reads.

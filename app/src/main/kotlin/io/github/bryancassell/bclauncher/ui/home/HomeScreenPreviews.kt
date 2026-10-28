@@ -10,10 +10,9 @@ import io.github.bryancassell.bclauncher.data.InstalledApp
 import io.github.bryancassell.bclauncher.ui.theme.BcLauncherTheme
 
 // Devices.TV_1080p is 1920 x 1080 dp in ui-tooling-preview 1.12.1, twice what a 1080p TV reports (#1).
-// HomeScreenScreenshotTest captures this preview, so the two share one set of sample apps.
 @Preview(device = "spec:width=960dp,height=540dp,dpi=320")
 @Composable
-internal fun HomeScreenPreview() {
+private fun HomeScreenPreview() {
     val icon = LocalResources.current.getDrawable(R.mipmap.ic_launcher, null)
     val colors =
         listOf(0xFFC62828, 0xFF1565C0, 0xFF2E7D32, 0xFF6A1B9A, 0xFFEF6C00, 0xFF00838F, 0xFF4E342E)
