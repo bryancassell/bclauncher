@@ -133,8 +133,20 @@ class MainActivityTest {
     }
 
     @Test
-    fun focusIsOnTheSameTileAfterTheHomeScreenIsRecreated() {
+    fun focusIsOnTheSameTileAfterTheHomeScreenIsRecreatedTwice() {
         pressKeys(listOf(Key.DirectionRight, Key.DirectionCenter))
+
+        // The system can relaunch it for two configuration changes in a row, as when an input device is added.
+        composeRule.activityRule.scenario.recreate()
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.onTile("Plex").assertIsFocused()
+    }
+
+    @Test
+    fun focusStaysOnTheSameTileWhenTheHomeScreenIsRecreated() {
+        // A configuration change, such as the font size, while the user browses the grid.
+        pressKeys(listOf(Key.DirectionRight))
 
         composeRule.activityRule.scenario.recreate()
 

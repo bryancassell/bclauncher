@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -92,8 +93,12 @@ internal fun HomeScreen(
  * tiles. These are the card width and margins in Android's TV layout guide (PRD.md, Design decisions).
  *
  * Focus starts on the first tile. Starting another app leaves focus where it was, since the window losing focus
- * doesn't clear it. The focused tile is also saved before an app starts, so focus returns to it after the activity is
- * recreated, such as when its process was stopped to free memory.
+ * doesn't clear it. The focused tile is also saved each time focus moves, so focus returns to it after the activity
+ * is recreated, such as for a configuration change or when its process was stopped to free memory.
+ *
+ * Saving once before an app starts isn't enough: saveFocusedChild() saves the tile focused when it's called, and the
+ * restore after a recreation doesn't save it again (Compose UI 1.12.1's FocusRestorer.kt). So a tile reached with the
+ * D-pad since then, or anything after a second recreation, went back to the first tile on the Google TV emulator.
  */
 @Composable
 private fun AppGrid(apps: List<InstalledApp>, onAppClick: (InstalledApp) -> Unit) {
@@ -112,10 +117,8 @@ private fun AppGrid(apps: List<InstalledApp>, onAppClick: (InstalledApp) -> Unit
         items(apps, key = { app -> app.component }) { app ->
             AppTile(
                 app = app,
-                onClick = {
-                    grid.saveFocusedChild()
-                    onAppClick(app)
-                },
+                onClick = { onAppClick(app) },
+                modifier = Modifier.onFocusChanged { if (it.isFocused) grid.saveFocusedChild() },
             )
         }
     }
