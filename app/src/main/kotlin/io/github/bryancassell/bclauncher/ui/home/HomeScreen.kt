@@ -1,7 +1,11 @@
 package io.github.bryancassell.bclauncher.ui.home
 
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
 import android.graphics.drawable.Drawable
+import android.view.View
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
@@ -15,9 +19,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -36,9 +41,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.tv.material3.Button
 import androidx.tv.material3.Card
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
@@ -59,16 +66,29 @@ fun HomeScreen(modifier: Modifier = Modifier, viewModel: HomeViewModel = hiltVie
         uiState = uiState,
         // The screen starts the app itself, with the activity's context (ARCHITECTURE.md, Layers and packages).
         onAppClick = { app ->
-            try {
-                context.startActivity(app.launchIntent)
-            } catch (_: ActivityNotFoundException) {
+            if (!context.startActivitySafely(app.launchIntent)) {
                 val message = resources.getString(R.string.app_did_not_open, app.label)
                 Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                 viewModel.onLaunchFailed()
             }
         },
+        onRetry = viewModel::retry,
         modifier = modifier,
     )
+}
+
+/**
+ * Whether [intent]'s activity started. A tile can outlive its activity: an update can remove it
+ * (ActivityNotFoundException), or stop exporting it or add a permission to it (SecurityException), before the reload
+ * drops the tile. Android's own launcher, Launcher3, catches the same two in its startActivitySafely.
+ */
+internal fun Context.startActivitySafely(intent: Intent): Boolean = try {
+    startActivity(intent)
+    true
+} catch (_: ActivityNotFoundException) {
+    false
+} catch (_: SecurityException) {
+    false
 }
 
 /** Shows nothing while the apps load, since a load takes a fraction of a second and an indicator would only flash. */
@@ -76,6 +96,7 @@ fun HomeScreen(modifier: Modifier = Modifier, viewModel: HomeViewModel = hiltVie
 internal fun HomeScreen(
     uiState: HomeUiState,
     onAppClick: (InstalledApp) -> Unit,
+    onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(modifier = modifier.fillMaxSize()) {
@@ -83,14 +104,14 @@ internal fun HomeScreen(
             HomeUiState.Loading -> Unit
             is HomeUiState.Content -> AppGrid(uiState.apps, onAppClick)
             HomeUiState.Empty -> Message(stringResource(R.string.home_empty))
-            HomeUiState.Error -> Message(stringResource(R.string.home_error))
+            HomeUiState.Error -> LoadError(onRetry)
         }
     }
 }
 
 /**
  * Six 124 dp tiles to a row, inside 58 dp margins at the sides and 28 dp at the top and bottom, with 20 dp between
- * tiles. These are the card width and margins in Android's TV layout guide (PRD.md, Design decisions).
+ * tiles. These are the card width and margins in Android's TV layout guide.
  *
  * Focus starts on the first tile. Starting another app leaves focus where it was, since the window losing focus
  * doesn't clear it. The focused tile is also saved each time focus moves, so focus returns to it after the activity
@@ -103,6 +124,15 @@ internal fun HomeScreen(
 @Composable
 private fun AppGrid(apps: List<InstalledApp>, onAppClick: (InstalledApp) -> Unit) {
     val grid = remember { FocusRequester() }
+    val focused = remember { FocusedTile() }
+    // When the focused tile's app leaves the list, as after onLaunchFailed() reloads it, focus goes to the tile that
+    // takes its place, or to the new last tile. Compose clears focus when the focused node is removed and moves it
+    // nowhere else, so Select would do nothing.
+    val replacementIndex = if (focused.app != null && apps.none { it.component == focused.app }) {
+        focused.index.coerceAtMost(apps.lastIndex)
+    } else {
+        -1
+    }
     LazyVerticalGrid(
         columns = GridCells.Fixed(6),
         modifier = Modifier
@@ -114,12 +144,26 @@ private fun AppGrid(apps: List<InstalledApp>, onAppClick: (InstalledApp) -> Unit
         horizontalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         // Keyed by component, so focus stays on the same app when the list is replaced.
-        items(apps, key = { app -> app.component }) { app ->
+        itemsIndexed(apps, key = { _, app -> app.component }) { index, app ->
+            val tile = remember { FocusRequester() }
             AppTile(
                 app = app,
                 onClick = { onAppClick(app) },
-                modifier = Modifier.onFocusChanged { if (it.isFocused) grid.saveFocusedChild() },
+                modifier = Modifier
+                    .focusRequester(tile)
+                    .onFocusChanged {
+                        if (it.isFocused) {
+                            focused.app = app.component
+                            focused.index = index
+                            grid.saveFocusedChild()
+                        }
+                    },
             )
+            // Tiles before the focused one can come and go, which moves it.
+            SideEffect { if (app.component == focused.app) focused.index = index }
+            if (index == replacementIndex) {
+                LaunchedEffect(apps) { tile.requestFocus() }
+            }
         }
     }
     // restoreFocusedChild() first, because requestFocus() on the grid focuses its first tile even when focusRestorer
@@ -130,7 +174,16 @@ private fun AppGrid(apps: List<InstalledApp>, onAppClick: (InstalledApp) -> Unit
     }
 }
 
-/** The app's banner, or its icon and name when it has none (PRD.md, Design decisions). */
+/** The tile that last had focus, and where it is in the list. */
+private class FocusedTile {
+    var app: ComponentName? = null
+    var index = 0
+}
+
+/**
+ * The app's banner, or its icon when it has none (PRD.md, Design decisions). The icon comes with the app's name, which
+ * a banner already shows.
+ */
 @Composable
 private fun AppTile(app: InstalledApp, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Card(onClick = onClick, modifier = modifier.aspectRatio(16f / 9f)) {
@@ -173,11 +226,31 @@ private fun Message(text: String) {
     }
 }
 
+/** Says the apps didn't load, with a Try again button that takes focus, so Select presses it. */
+@Composable
+private fun LoadError(onRetry: () -> Unit) {
+    val retry = remember { FocusRequester() }
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = stringResource(R.string.home_error),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Button(onClick = onRetry, modifier = Modifier.focusRequester(retry)) {
+            Text(text = stringResource(R.string.home_retry))
+        }
+    }
+    LaunchedEffect(Unit) { retry.requestFocus() }
+}
+
 /**
  * Draws a banner or icon from PackageManager at the size it's given. They may be bitmaps, vectors or adaptive icons,
  * so drawing the Drawable keeps vectors sharp, where converting it to a bitmap first would fix its resolution.
  */
-private class DrawablePainter(private val drawable: Drawable) : Painter() {
+internal class DrawablePainter(private val drawable: Drawable) : Painter() {
     // A Drawable with no size of its own, such as a ColorDrawable, reports -1.
     override val intrinsicSize: Size =
         if (drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0) {
@@ -185,6 +258,15 @@ private class DrawablePainter(private val drawable: Drawable) : Painter() {
         } else {
             Size.Unspecified
         }
+
+    // So a drawable marked autoMirrored, such as an icon with an arrow, is mirrored in a right-to-left language.
+    override fun applyLayoutDirection(layoutDirection: LayoutDirection): Boolean =
+        drawable.setLayoutDirection(
+            when (layoutDirection) {
+                LayoutDirection.Ltr -> View.LAYOUT_DIRECTION_LTR
+                LayoutDirection.Rtl -> View.LAYOUT_DIRECTION_RTL
+            },
+        )
 
     override fun DrawScope.onDraw() {
         drawable.setBounds(0, 0, size.width.roundToInt(), size.height.roundToInt())

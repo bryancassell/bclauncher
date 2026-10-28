@@ -2,6 +2,9 @@ package io.github.bryancassell.bclauncher.ui.home
 
 import android.content.Context
 import android.graphics.drawable.ColorDrawable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteraction
@@ -42,11 +45,18 @@ class HomeScreenTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     private val clicked = mutableListOf<InstalledApp>()
+    private var retries = 0
 
-    private fun setUiState(uiState: HomeUiState) {
+    // A test changes what the screen shows by setting this after showScreen.
+    private var uiState by mutableStateOf<HomeUiState>(HomeUiState.Loading)
+
+    private fun showScreen(initial: HomeUiState) {
+        uiState = initial
         composeRule.setContent {
             BcLauncherTheme {
-                HomeScreen(uiState = uiState, onAppClick = { clicked += it })
+                HomeScreen(uiState = uiState, onAppClick = {
+                    clicked += it
+                }, onRetry = { retries++ })
             }
         }
     }
@@ -61,7 +71,7 @@ class HomeScreenTest {
 
     @Test
     fun showsNothingWhileLoading() {
-        setUiState(HomeUiState.Loading)
+        showScreen(HomeUiState.Loading)
 
         composeRule.onAllNodes(hasClickAction()).assertCountEquals(0)
         composeRule.onAllNodesWithText(context.getString(R.string.home_empty)).assertCountEquals(0)
@@ -70,7 +80,7 @@ class HomeScreenTest {
 
     @Test
     fun saysSoWhenThereAreNoApps() {
-        setUiState(HomeUiState.Empty)
+        showScreen(HomeUiState.Empty)
 
         composeRule.onNodeWithText(context.getString(R.string.home_empty)).assertIsDisplayed()
         composeRule.onAllNodes(hasClickAction()).assertCountEquals(0)
@@ -78,15 +88,26 @@ class HomeScreenTest {
 
     @Test
     fun saysSoWhenTheAppsDidNotLoad() {
-        setUiState(HomeUiState.Error)
+        showScreen(HomeUiState.Error)
 
         composeRule.onNodeWithText(context.getString(R.string.home_error)).assertIsDisplayed()
-        composeRule.onAllNodes(hasClickAction()).assertCountEquals(0)
+        composeRule.onNode(
+            hasText(context.getString(R.string.home_retry)) and hasClickAction(),
+        ).assertIsFocused()
+    }
+
+    @Test
+    fun selectTriesAgainAfterTheAppsDidNotLoad() {
+        showScreen(HomeUiState.Error)
+
+        pressKeys(listOf(Key.DirectionCenter))
+
+        assertEquals(1, retries)
     }
 
     @Test
     fun showsATileForEachApp() {
-        setUiState(
+        showScreen(
             HomeUiState.Content(
                 listOf(fakeApp("Netflix").copy(banner = ColorDrawable()), fakeApp("Sideloaded")),
             ),
@@ -101,14 +122,14 @@ class HomeScreenTest {
 
     @Test
     fun focusStartsOnTheFirstApp() {
-        setUiState(HomeUiState.Content(bannerApps(3)))
+        showScreen(HomeUiState.Content(bannerApps(3)))
 
         composeRule.onTile("App 1").assertIsFocused()
     }
 
     @Test
     fun theDPadMovesFocusAcrossSixAppsToARow() {
-        setUiState(HomeUiState.Content(bannerApps(8)))
+        showScreen(HomeUiState.Content(bannerApps(8)))
 
         pressKeys(listOf(Key.DirectionRight))
         composeRule.onTile("App 2").assertIsFocused()
@@ -120,10 +141,43 @@ class HomeScreenTest {
     @Test
     fun selectOpensTheFocusedApp() {
         val apps = bannerApps(3)
-        setUiState(HomeUiState.Content(apps))
+        showScreen(HomeUiState.Content(apps))
 
         pressKeys(listOf(Key.DirectionRight, Key.DirectionCenter))
 
         assertEquals(listOf(apps[1]), clicked)
+    }
+
+    @Test
+    fun focusMovesToTheTileThatTakesTheRemovedTilesPlace() {
+        val apps = bannerApps(3)
+        showScreen(HomeUiState.Content(apps))
+        pressKeys(listOf(Key.DirectionRight))
+
+        uiState = HomeUiState.Content(apps - apps[1])
+
+        composeRule.onTile("App 3").assertIsFocused()
+    }
+
+    @Test
+    fun focusMovesToTheTileBeforeWhenTheLastTileIsRemoved() {
+        val apps = bannerApps(3)
+        showScreen(HomeUiState.Content(apps))
+        pressKeys(listOf(Key.DirectionRight, Key.DirectionRight))
+
+        uiState = HomeUiState.Content(apps - apps[2])
+
+        composeRule.onTile("App 2").assertIsFocused()
+    }
+
+    @Test
+    fun focusStaysOnItsTileWhenAnotherTileIsRemoved() {
+        val apps = bannerApps(3)
+        showScreen(HomeUiState.Content(apps))
+        pressKeys(listOf(Key.DirectionRight, Key.DirectionRight))
+
+        uiState = HomeUiState.Content(apps - apps[0])
+
+        composeRule.onTile("App 3").assertIsFocused()
     }
 }

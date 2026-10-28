@@ -2,6 +2,7 @@ package io.github.bryancassell.bclauncher
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
@@ -37,17 +38,26 @@ class GoogleTvLaunchTest {
         // The overload that takes ResolveInfoFlags needs API 33, and the tests run from API 29.
         @Suppress("DEPRECATION")
         val activities = context.packageManager.queryIntentActivities(tvApps, 0)
-        // The emulator's stock apps fit on the first screen, so every tile is composed.
-        val labels = activities
+        // The emulator's stock apps fit on the first screen, so every tile is composed. Like the grid, this leaves out
+        // activities BC Launcher may not start, and counts apps that share a label.
+        val tileCounts = activities
             .filter { it.activityInfo.packageName != context.packageName }
-            .map { it.loadLabel(context.packageManager).toString() }
-        assertTrue(labels.isNotEmpty())
+            .filter { it.activityInfo.exported }
+            .filter { resolveInfo ->
+                val permission = resolveInfo.activityInfo.permission
+                permission == null ||
+                    context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+            }
+            .groupingBy { it.loadLabel(context.packageManager).toString() }
+            .eachCount()
+        assertTrue(tileCounts.isNotEmpty())
 
         ActivityScenario.launch<MainActivity>(intent).use {
-            labels.forEach { label ->
+            tileCounts.forEach { (label, count) ->
                 // A tile is described by its banner, or shows the app's name when it has none.
-                composeRule.waitUntilExactlyOneExists(
+                composeRule.waitUntilNodeCount(
                     hasClickAction() and (hasContentDescription(label) or hasText(label)),
+                    count,
                     timeoutMillis = 5_000,
                 )
             }

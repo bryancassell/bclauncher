@@ -23,10 +23,14 @@ class HomeViewModelTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val packageSource = FakePackageSource()
-    private val viewModel =
+
+    // Created on first use, after MainDispatcherRule has set the main dispatcher, so viewModelScope runs on the rule's
+    // dispatcher. A field initializer would run first, and viewModelScope would take the real main dispatcher.
+    private val viewModel by lazy {
         HomeViewModel(
             InstalledAppsRepository(context, packageSource, mainDispatcherRule.dispatcher),
         )
+    }
 
     private val contentLabels: List<String>
         get() = (viewModel.uiState.value as HomeUiState.Content).apps.map { it.label }
@@ -87,6 +91,17 @@ class HomeViewModelTest {
         packageSource.setAppsWithoutReporting(fakeApp("YouTube"))
 
         viewModel.onLaunchFailed()
+
+        assertEquals(listOf("YouTube"), contentLabels)
+    }
+
+    @Test
+    fun loadsAgainWhenRetriedAfterAnError() = runTest {
+        packageSource.duringNextLoad { throw OutOfMemoryError() }
+        collectState()
+        packageSource.setAppsWithoutReporting(fakeApp("YouTube"))
+
+        viewModel.retry()
 
         assertEquals(listOf("YouTube"), contentLabels)
     }

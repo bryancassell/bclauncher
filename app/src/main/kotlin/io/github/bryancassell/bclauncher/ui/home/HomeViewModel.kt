@@ -41,11 +41,16 @@ class HomeViewModel @Inject constructor(repository: InstalledAppsRepository) : V
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<HomeUiState> = loadRequests
-        .flatMapLatest { repository.apps }
-        .map { apps -> if (apps.isEmpty()) HomeUiState.Empty else HomeUiState.Content(apps) }
-        // PackageManager catches the exceptions that loading a label or an image throws, so what gets here is an
-        // Error such as OutOfMemoryError (#4). Collecting again when the screen returns tries again.
-        .catch { emit(HomeUiState.Error) }
+        .flatMapLatest {
+            repository.apps
+                .map { apps ->
+                    if (apps.isEmpty()) HomeUiState.Empty else HomeUiState.Content(apps)
+                }
+                // PackageManager catches the exceptions that loading a label or an image throws, so what gets here
+                // is an Error such as OutOfMemoryError (#4). Caught inside flatMapLatest, so a failed load ends only
+                // this collection, and retry() can start another.
+                .catch { emit(HomeUiState.Error) }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState.Loading)
 
     /**
@@ -57,6 +62,11 @@ class HomeViewModel @Inject constructor(repository: InstalledAppsRepository) : V
      * flow merged in would forward them one at a time.
      */
     fun onLaunchFailed() {
+        loadRequests.update { it + 1 }
+    }
+
+    /** Loads the apps again after a load failed, when the user asks to try again. */
+    fun retry() {
         loadRequests.update { it + 1 }
     }
 }

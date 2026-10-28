@@ -111,7 +111,8 @@ class MainActivityTest {
             ShadowToast.getTextOfLatestToast(),
         )
         composeRule.onTile("Plex").assertDoesNotExist()
-        composeRule.onTile("YouTube").assertIsDisplayed()
+        // YouTube took Plex's place, so the user keeps their place in the grid.
+        composeRule.onTile("YouTube").assertIsFocused()
     }
 
     @Test
