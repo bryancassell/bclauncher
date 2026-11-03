@@ -5,11 +5,14 @@ import android.app.Application
 import android.content.ComponentName
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ActivityInfo
+import android.content.pm.ApplicationInfo
 import android.os.Looper
 import android.view.KeyEvent
 import android.view.ViewConfiguration
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.time.Duration
@@ -22,6 +25,9 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ServiceController
+import org.robolectric.shadow.api.Shadow
+import org.robolectric.shadows.ShadowAccessibilityRecord
+import org.robolectric.shadows.ShadowLooper
 
 @RunWith(AndroidJUnit4::class)
 class HomeButtonServiceTest {
@@ -39,6 +45,12 @@ class HomeButtonServiceTest {
         "com.google.android.apps.tv.launcherx",
         "com.google.android.apps.tv.launcherx.home.HomeActivity",
     )
+    private val googleTvPanel = "com.google.android.apps.tv.launcherx.dashboard.DashboardActivity"
+    private val youTube = "com.google.android.youtube.tv"
+
+    // The window in front, and one behind it.
+    private val frontWindow = 1
+    private val hiddenWindow = 2
 
     private fun idleFor(millis: Long) {
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(millis))
@@ -66,28 +78,50 @@ class HomeButtonServiceTest {
         assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK, started?.flags)
     }
 
+    private val homeFilter = IntentFilter(Intent.ACTION_MAIN).apply {
+        addCategory(Intent.CATEGORY_HOME)
+        addCategory(Intent.CATEGORY_DEFAULT)
+    }
+
     // Google TV's launcher is the system's Home app, as on a Google TV device.
     private fun installGoogleTvHome() {
-        val filter = IntentFilter(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_HOME)
-            addCategory(Intent.CATEGORY_DEFAULT)
-        }
         shadowOf(application.packageManager).apply {
             addActivityIfNotPresent(googleTvHome)
-            addIntentFilterForActivity(googleTvHome, filter)
+            addIntentFilterForActivity(googleTvHome, homeFilter)
         }
     }
 
-    private fun setInFront(packageName: String) {
+    // The windows on screen: one in front, from packageName, or none.
+    private fun setInFront(
+        packageName: String?,
+        type: Int = AccessibilityWindowInfo.TYPE_APPLICATION,
+    ) {
+        if (packageName == null) {
+            shadowOf(service).setWindows(emptyList())
+            return
+        }
         @Suppress("DEPRECATION")
         val root = AccessibilityNodeInfo.obtain().apply { this.packageName = packageName }
-        shadowOf(service).setRootInActiveWindow(root)
+
+        @Suppress("DEPRECATION")
+        val window = AccessibilityWindowInfo.obtain()
+        shadowOf(window).apply {
+            setId(frontWindow)
+            setType(type)
+            setActive(true)
+            setRoot(root)
+        }
+        shadowOf(service).setWindows(listOf(window))
     }
 
-    // The window in front as the service connects, or none.
+    // Asking the window in front for its package runs on the service's own thread.
     private fun connectWithInFront(packageName: String?) {
-        if (packageName != null) setInFront(packageName)
+        setInFront(packageName)
         service.onServiceConnected()
+        ShadowLooper.getAllLoopers().filter {
+            it != Looper.getMainLooper()
+        }.forEach { shadowOf(it).idle() }
+        idleFor(0)
     }
 
     // As the system does when the screensaver starts or stops. Sent from the service, so it's running to receive it.
@@ -96,15 +130,20 @@ class HomeButtonServiceTest {
         idleFor(0)
     }
 
-    private fun windowEventFrom(packageName: String, className: String? = null) {
+    private fun windowEventFrom(
+        packageName: String,
+        className: String?,
+        windowId: Int = frontWindow,
+    ) {
         @Suppress("DEPRECATION")
         val event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
         event.packageName = packageName
         event.className = className
+        Shadow.extract<ShadowAccessibilityRecord>(event).setWindowId(windowId)
         service.onAccessibilityEvent(event)
     }
 
-    private fun windowComesToTheFront(packageName: String, className: String? = null) {
+    private fun windowComesToTheFront(packageName: String, className: String?) {
         setInFront(packageName)
         windowEventFrom(packageName, className)
     }
@@ -231,21 +270,39 @@ class HomeButtonServiceTest {
     fun bcLauncherOpensAgainWhenGoogleTvsHomeEndsUpInFrontAfterAHandOff() {
         handOffWithGoogleTvHome()
 
-        // As on a TV where Google TV's home starts later than BC Launcher.
+        // As when Google TV's launcher starts its home again itself.
         googleTvsHomeComesToTheFront()
 
         assertOpenedBcLauncher(startedActivity)
     }
 
     @Test
-    fun googleTvsPanelAfterAHandOffOpensNothing() {
+    fun googleTvsHomeBehindBcLauncherAfterAHandOffOpensNothing() {
         handOffWithGoogleTvHome()
 
-        // Google TV's panel is in the same package as its home.
-        windowComesToTheFront(
-            googleTvHome.packageName,
-            "com.google.android.apps.tv.launcherx.dashboard.DashboardActivity",
-        )
+        // Google TV's home sends window events while BC Launcher covers it.
+        windowEventFrom(googleTvHome.packageName, googleTvHome.className, hiddenWindow)
+
+        assertNull(startedActivity)
+    }
+
+    @Test
+    fun googleTvsPanelAfterAHandOffEndsTheWait() {
+        handOffWithGoogleTvHome()
+
+        // As when another key opens Google TV's panel. Its home then sends a window event from behind it.
+        windowComesToTheFront(googleTvHome.packageName, googleTvPanel)
+        windowEventFrom(googleTvHome.packageName, googleTvHome.className)
+
+        assertNull(startedActivity)
+    }
+
+    @Test
+    fun anotherAppAfterAHandOffEndsTheWait() {
+        handOffWithGoogleTvHome()
+
+        windowComesToTheFront(youTube, "$youTube.MainActivity")
+        googleTvsHomeComesToTheFront()
 
         assertNull(startedActivity)
     }
@@ -261,11 +318,17 @@ class HomeButtonServiceTest {
     }
 
     @Test
-    fun googleTvsHomeBehindBcLauncherAfterAHandOffOpensNothing() {
-        handOffWithGoogleTvHome()
+    fun aPressDuringTheHandOffDelayStillOpensBcLauncherWithoutTheWait() {
+        installGoogleTvHome()
+        connectWithInFront(application.packageName)
+        pressHome()
+        idleFor(handOffDelay - 40)
 
-        // Google TV's home sends window events while BC Launcher covers it.
-        windowEventFrom(googleTvHome.packageName, googleTvHome.className)
+        // The user holds Home again for the panel.
+        send(KeyEvent.ACTION_DOWN)
+        idleFor(40)
+        assertOpenedBcLauncher(startedActivity)
+        googleTvsHomeComesToTheFront()
 
         assertNull(startedActivity)
     }
@@ -296,7 +359,7 @@ class HomeButtonServiceTest {
 
         // As when the user has just turned the service on, or the TV started in an HDMI input.
         connectWithInFront("com.android.tv.settings")
-        windowComesToTheFront(googleTvHome.packageName)
+        googleTvsHomeComesToTheFront()
 
         assertNull(startedActivity)
     }
@@ -307,7 +370,7 @@ class HomeButtonServiceTest {
 
         connectWithInFront(null)
         assertNull(startedActivity)
-        windowComesToTheFront(googleTvHome.packageName)
+        googleTvsHomeComesToTheFront()
 
         assertOpenedBcLauncher(startedActivity)
     }
@@ -317,8 +380,58 @@ class HomeButtonServiceTest {
         installGoogleTvHome()
 
         connectWithInFront(null)
-        windowComesToTheFront("com.google.android.youtube.tv")
-        windowComesToTheFront(googleTvHome.packageName)
+        windowComesToTheFront(youTube, "$youTube.MainActivity")
+        googleTvsHomeComesToTheFront()
+
+        assertNull(startedActivity)
+    }
+
+    @Test
+    fun googleTvsHomeBehindTheFirstAppOpensNothing() {
+        installGoogleTvHome()
+        connectWithInFront(null)
+
+        // The TV started in an HDMI input, with Google TV's home behind it.
+        setInFront("com.example.hdmiinput")
+        windowEventFrom(googleTvHome.packageName, googleTvHome.className, hiddenWindow)
+
+        assertNull(startedActivity)
+    }
+
+    @Test
+    fun androidsOwnDialogsDoNotEndTheWait() {
+        installGoogleTvHome()
+        connectWithInFront(null)
+
+        // As Android's "Optimizing apps" dialog after an update.
+        setInFront("android", AccessibilityWindowInfo.TYPE_SYSTEM)
+        windowEventFrom("android", "android.app.AlertDialog")
+        googleTvsHomeComesToTheFront()
+
+        assertOpenedBcLauncher(startedActivity)
+    }
+
+    @Test
+    fun googleTvsWindowsThatAreNotActivitiesDoNotEndTheWait() {
+        installGoogleTvHome()
+        connectWithInFront(null)
+
+        windowComesToTheFront(googleTvHome.packageName, "android.widget.FrameLayout")
+        googleTvsHomeComesToTheFront()
+
+        assertOpenedBcLauncher(startedActivity)
+    }
+
+    @Test
+    fun aHomePressEndsTheWaitAfterConnecting() {
+        installGoogleTvHome()
+        connectWithInFront(null)
+
+        // The user holds Home for the panel before any window has come to the front.
+        send(KeyEvent.ACTION_DOWN)
+        idleFor(longPressTimeout)
+        windowComesToTheFront(googleTvHome.packageName, googleTvPanel)
+        googleTvsHomeComesToTheFront()
 
         assertNull(startedActivity)
     }
@@ -331,19 +444,34 @@ class HomeButtonServiceTest {
     }
 
     @Test
-    fun homeClosesTheScreensaverAndOpensBcLauncher() {
+    fun recognizesGoogleTvsHomeWhenItsHomeFilterIsOnAnAlias() {
+        val alias = ActivityInfo().apply {
+            packageName = googleTvHome.packageName
+            name = "${googleTvHome.packageName}.HomeAlias"
+            targetActivity = googleTvHome.className
+            applicationInfo = ApplicationInfo().apply { packageName = googleTvHome.packageName }
+        }
+        shadowOf(application.packageManager).apply {
+            addOrUpdateActivity(alias)
+            addIntentFilterForActivity(ComponentName(alias.packageName, alias.name), homeFilter)
+        }
+        connectWithInFront(null)
+
+        // Window events name the activity, not the alias.
+        googleTvsHomeComesToTheFront()
+
+        assertOpenedBcLauncher(startedActivity)
+    }
+
+    @Test
+    fun homeDuringTheScreensaverHandsItToAndroid() {
         screensaver(Intent.ACTION_DREAMING_STARTED)
 
         pressHome()
         idleFor(handOffDelay)
 
-        assertEquals(
-            listOf(
-                AccessibilityService.GLOBAL_ACTION_BACK,
-                AccessibilityService.GLOBAL_ACTION_HOME,
-            ),
-            globalActions,
-        )
+        // Android closes the screensaver for it, so there's no Back.
+        assertEquals(listOf(AccessibilityService.GLOBAL_ACTION_HOME), globalActions)
         assertOpenedBcLauncher(startedActivity)
     }
 
@@ -364,14 +492,13 @@ class HomeButtonServiceTest {
     }
 
     @Test
-    fun homeSendsNoBackOnceTheScreensaverHasClosed() {
+    fun holdingHomeSendsNoBackOnceTheScreensaverHasClosed() {
         screensaver(Intent.ACTION_DREAMING_STARTED)
         screensaver(Intent.ACTION_DREAMING_STOPPED)
 
-        pressHome()
-        idleFor(handOffDelay)
+        send(KeyEvent.ACTION_DOWN)
+        idleFor(longPressTimeout)
 
-        assertEquals(listOf(AccessibilityService.GLOBAL_ACTION_HOME), globalActions)
-        assertOpenedBcLauncher(startedActivity)
+        assertEquals(listOf(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS), globalActions)
     }
 }

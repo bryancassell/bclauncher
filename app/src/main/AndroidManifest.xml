@@ -43,7 +43,11 @@
             </intent-filter>
         </activity>
 
-        <!-- Takes the remote's Home button, in its own process (ARCHITECTURE.md, Home button). -->
+        <!--
+        Takes the remote's Home button (ARCHITECTURE.md, Home button). In its own process, since the
+        system waits for its key handling on every key in every app, and the home screen's main
+        thread can be busy (#10).
+        -->
         <service
             android:name=".HomeButtonService"
             android:exported="false"

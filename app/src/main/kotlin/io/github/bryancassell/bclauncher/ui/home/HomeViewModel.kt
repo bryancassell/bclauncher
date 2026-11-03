@@ -72,6 +72,11 @@ class HomeViewModel @Inject constructor(
      */
     val showsHomeButtonMessage: StateFlow<Boolean> = homeButtonRepository.isOn
         .map { isOn -> !isOn }
+        // Reading the setting may throw, as loading the apps can. Without the message, the home screen still works.
+        .catch { error ->
+            Log.e(TAG, "Couldn't read whether the Home button service is on", error)
+            emit(false)
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     /** Opens Accessibility settings, where the user turns BC Launcher's service on or off. */

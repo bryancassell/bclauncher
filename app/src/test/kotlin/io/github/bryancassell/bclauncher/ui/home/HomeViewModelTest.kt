@@ -159,4 +159,16 @@ class HomeViewModelTest {
             viewModel.homeButtonSettingsIntent.action,
         )
     }
+
+    @Test
+    fun hidesTheHomeButtonMessageWhenTheSettingCannotBeRead() = runTest {
+        accessibilitySource.failReading(IllegalStateException("settings provider unavailable"))
+
+        collectState()
+
+        assertFalse(viewModel.showsHomeButtonMessage.value)
+        val log = ShadowLog.getLogsForTag("HomeViewModel").single()
+        assertEquals(Log.ERROR, log.type)
+        assertTrue(log.throwable is IllegalStateException)
+    }
 }
