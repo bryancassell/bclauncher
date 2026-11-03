@@ -10,6 +10,7 @@ Decisions and conventions that more than one part of BC Launcher follows, with t
 - [Layers and packages](#layers-and-packages)
 - [Dependency injection](#dependency-injection)
 - [Tests](#tests)
+- [Home button](#home-button)
 
 ## Decisions
 
@@ -20,6 +21,7 @@ Decisions and conventions that more than one part of BC Launcher follows, with t
 | [Layers and packages](#layers-and-packages) | A UI layer and a data layer in one `app` module, with no domain layer yet. |
 | [Dependency injection](#dependency-injection) | Hilt, with KSP. |
 | [Tests](#tests) | Local Robolectric tests, as a 1080p TV on API 29 and 37. |
+| [Home button](#home-button) | Google TV's launcher stays Android's Home app, so an accessibility service in its own process takes the Home key. |
 
 ## Platform versions
 
@@ -52,3 +54,7 @@ Compose UI and screenshot tests run on Robolectric in `app/src/test`, so `./grad
 Compose previews go in a `*Previews.kt` file under `ui`, which the 80% coverage check skips, since no test runs them (#2).
 
 Tests that start an `@AndroidEntryPoint` activity run on `HiltTestApplication`, where `@TestInstallIn` modules replace platform sources such as `PackageSource` with fakes (#4).
+
+## Home button
+
+Google TV's launcher stays Android's Home app whatever the user chooses as the default. Its Home filter has priority 2, which only a system app can have, and Android goes by the default only between candidates of the same priority. So a `CATEGORY_HOME` intent opens Google TV, and BC Launcher declares no Home filter. Instead, `HomeButtonService`, an accessibility service the user turns on, takes the remote's Home key, hands short presses on to Android, and starts `MainActivity` in place of Google TV's home. It also does that when it connects, and for 1.5 s after a Home press, if Google TV's home comes to the front, so an entry that opens Google TV's home (#6) has to allow for it. It runs in its own process, `:home_button`, which shares no memory with the home screen (#10).

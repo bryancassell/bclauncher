@@ -1,14 +1,18 @@
 package io.github.bryancassell.bclauncher.ui.home
 
 import android.content.Context
+import android.provider.Settings
 import android.util.Log
 import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.bryancassell.bclauncher.MainDispatcherRule
+import io.github.bryancassell.bclauncher.data.FakeAccessibilitySource
 import io.github.bryancassell.bclauncher.data.FakePackageSource
+import io.github.bryancassell.bclauncher.data.HomeButtonRepository
 import io.github.bryancassell.bclauncher.data.InstalledAppsRepository
 import io.github.bryancassell.bclauncher.data.fakeApp
+import io.github.bryancassell.bclauncher.data.homeButtonService
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -16,6 +20,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -29,12 +34,14 @@ class HomeViewModelTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val packageSource = FakePackageSource()
+    private val accessibilitySource = FakeAccessibilitySource()
 
     // Created on first use, after MainDispatcherRule has set the main dispatcher, so viewModelScope runs on the rule's
     // dispatcher. A field initializer would run first, and viewModelScope would take the real main dispatcher.
     private val viewModel by lazy {
         HomeViewModel(
             InstalledAppsRepository(context, packageSource, mainDispatcherRule.dispatcher),
+            HomeButtonRepository(context, accessibilitySource),
         )
     }
 
@@ -50,6 +57,9 @@ class HomeViewModelTest {
     private fun TestScope.collectState() {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             viewModel.uiState.collect {}
+        }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.showsHomeButtonMessage.collect {}
         }
     }
 
@@ -119,5 +129,46 @@ class HomeViewModelTest {
         viewModel.retry()
 
         assertEquals(listOf("YouTube"), contentLabels)
+    }
+
+    @Test
+    fun hidesTheHomeButtonMessageUntilItKnowsWhatHomeOpens() {
+        assertFalse(viewModel.showsHomeButtonMessage.value)
+    }
+
+    @Test
+    fun showsTheHomeButtonMessageWhileHomeOpensGoogleTv() = runTest {
+        collectState()
+
+        assertTrue(viewModel.showsHomeButtonMessage.value)
+    }
+
+    @Test
+    fun hidesTheHomeButtonMessageOnceTheUserTurnsOnTheService() = runTest {
+        collectState()
+
+        accessibilitySource.setEnabledServices(homeButtonService(context))
+
+        assertFalse(viewModel.showsHomeButtonMessage.value)
+    }
+
+    @Test
+    fun homeButtonSettingsIntentOpensAccessibilitySettings() {
+        assertEquals(
+            Settings.ACTION_ACCESSIBILITY_SETTINGS,
+            viewModel.homeButtonSettingsIntent.action,
+        )
+    }
+
+    @Test
+    fun hidesTheHomeButtonMessageWhenTheSettingCannotBeRead() = runTest {
+        accessibilitySource.failReading(IllegalStateException("settings provider unavailable"))
+
+        collectState()
+
+        assertFalse(viewModel.showsHomeButtonMessage.value)
+        val log = ShadowLog.getLogsForTag("HomeViewModel").single()
+        assertEquals(Log.ERROR, log.type)
+        assertTrue(log.throwable is IllegalStateException)
     }
 }

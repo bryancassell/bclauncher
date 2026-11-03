@@ -1,9 +1,11 @@
 package io.github.bryancassell.bclauncher.ui.home
 
+import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.github.bryancassell.bclauncher.data.HomeButtonRepository
 import io.github.bryancassell.bclauncher.data.InstalledApp
 import io.github.bryancassell.bclauncher.data.InstalledAppsRepository
 import javax.inject.Inject
@@ -34,7 +36,10 @@ sealed interface HomeUiState {
 private const val TAG = "HomeViewModel"
 
 @HiltViewModel
-class HomeViewModel @Inject constructor(repository: InstalledAppsRepository) : ViewModel() {
+class HomeViewModel @Inject constructor(
+    repository: InstalledAppsRepository,
+    private val homeButtonRepository: HomeButtonRepository,
+) : ViewModel() {
     // Each new value restarts collecting the apps, which loads them again.
     private val loadRequests = MutableStateFlow(0)
 
@@ -59,6 +64,24 @@ class HomeViewModel @Inject constructor(repository: InstalledAppsRepository) : V
                 }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState.Loading)
+
+    /**
+     * Whether the screen shows the message that offers to make Home open BC Launcher, which it does while Home opens
+     * Google TV (PRD.md, Design decisions). False until that's known, so the message doesn't flash on screen when the
+     * service is on.
+     */
+    val showsHomeButtonMessage: StateFlow<Boolean> = homeButtonRepository.isOn
+        .map { isOn -> !isOn }
+        // Reading the setting may throw, as loading the apps can. Without the message, the home screen still works.
+        .catch { error ->
+            Log.e(TAG, "Couldn't read whether the Home button service is on", error)
+            emit(false)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** Opens Accessibility settings, where the user turns BC Launcher's service on or off. */
+    val homeButtonSettingsIntent: Intent
+        get() = homeButtonRepository.settingsIntent
 
     /**
      * Loads the apps again after one didn't open, since its tile may be stale: when an update removes an app's only

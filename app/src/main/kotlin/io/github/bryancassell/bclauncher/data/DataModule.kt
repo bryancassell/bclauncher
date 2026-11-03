@@ -32,3 +32,11 @@ interface PackageSourceModule {
     @Binds
     fun packageSource(source: PackageManagerSource): PackageSource
 }
+
+/** Its own module, so activity tests can replace it with a fake source, as with [PackageSourceModule]. */
+@Module
+@InstallIn(SingletonComponent::class)
+interface AccessibilitySourceModule {
+    @Binds
+    fun accessibilitySource(source: SettingsAccessibilitySource): AccessibilitySource
+}

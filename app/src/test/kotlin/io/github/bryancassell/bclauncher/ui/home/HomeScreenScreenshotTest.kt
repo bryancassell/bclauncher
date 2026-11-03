@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
 import io.github.bryancassell.bclauncher.R
+import io.github.bryancassell.bclauncher.data.InstalledApp
 import io.github.bryancassell.bclauncher.data.fakeApp
 import io.github.bryancassell.bclauncher.ui.theme.BcLauncherTheme
 import org.junit.Rule
@@ -26,8 +27,7 @@ class HomeScreenScreenshotTest {
 
     // Seven apps with banners, so the grid wraps to a second row, then one without, which shows its icon and name.
     // The first tile is focused.
-    @Test
-    fun homeScreen() {
+    private fun apps(): List<InstalledApp> {
         val context: Context = ApplicationProvider.getApplicationContext()
         val colors =
             listOf(
@@ -39,15 +39,35 @@ class HomeScreenScreenshotTest {
                 0xFF00838F,
                 0xFF4E342E,
             )
-        val apps = colors.mapIndexed { index, color ->
+        return colors.mapIndexed { index, color ->
             fakeApp("App $index").copy(banner = ColorDrawable(color.toInt()))
         } + fakeApp("No banner").copy(icon = context.getDrawable(R.mipmap.ic_launcher)!!)
+    }
+
+    private fun capture(showsHomeButtonMessage: Boolean) {
         composeRule.setContent {
             BcLauncherTheme {
-                HomeScreen(uiState = HomeUiState.Content(apps), onAppClick = {}, onRetry = {})
+                HomeScreen(
+                    uiState = HomeUiState.Content(apps()),
+                    showsHomeButtonMessage = showsHomeButtonMessage,
+                    onAppClick = {},
+                    onRetry = {},
+                    onUseBcLauncher = {},
+                )
             }
         }
 
         composeRule.onRoot().captureRoboImage()
+    }
+
+    @Test
+    fun homeScreen() {
+        capture(showsHomeButtonMessage = false)
+    }
+
+    // While Home opens Google TV, the message above the grid offers to change that.
+    @Test
+    fun homeScreenWithHomeButtonMessage() {
+        capture(showsHomeButtonMessage = true)
     }
 }

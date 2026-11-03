@@ -9,11 +9,18 @@
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
-    <!-- Makes the apps the home screen lists visible from API 30, without QUERY_ALL_PACKAGES (#4). -->
+    <!--
+    Makes the apps the home screen lists visible from API 30, without QUERY_ALL_PACKAGES (#4), and
+    the system's Home app, Google TV, which HomeButtonService opens BC Launcher in place of (#10).
+    -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
         </intent>
     </queries>
 
@@ -25,13 +32,34 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.BcLauncher">
 
+        <!-- singleTask, as Android's own launcher is, so Home returns to the one home screen (#10). -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+        Takes the remote's Home button (ARCHITECTURE.md, Home button). In its own process, since the
+        system waits for its key handling on every key in every app, and the home screen's main
+        thread can be busy (#10).
+        -->
+        <service
+            android:name=".HomeButtonService"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:process=":home_button">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/home_button_service" />
+        </service>
     </application>
 </manifest>
