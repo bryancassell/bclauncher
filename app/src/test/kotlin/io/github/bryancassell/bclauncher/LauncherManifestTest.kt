@@ -67,7 +67,7 @@ class LauncherManifestTest {
     }
 
     @Test
-    fun homeButtonServiceIsAnAccessibilityServiceOnlyTheSystemCanBind() {
+    fun homeButtonServiceIsAnAccessibilityServiceOnlyTheSystemCanBindInItsOwnProcess() {
         val intent = Intent(AccessibilityService.SERVICE_INTERFACE).setPackage(context.packageName)
 
         val service = context.packageManager.queryIntentServices(
@@ -77,6 +77,7 @@ class LauncherManifestTest {
 
         assertEquals(HomeButtonService::class.java.name, service.serviceInfo.name)
         assertEquals(Manifest.permission.BIND_ACCESSIBILITY_SERVICE, service.serviceInfo.permission)
+        assertEquals("${context.packageName}:home_button", service.serviceInfo.processName)
         assertEquals(
             R.xml.home_button_service,
             service.serviceInfo.metaData.getInt(AccessibilityService.SERVICE_META_DATA),

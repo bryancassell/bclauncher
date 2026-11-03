@@ -281,4 +281,13 @@ class HomeScreenTest {
             hasText(context.getString(R.string.home_retry)) and hasClickAction(),
         ).assertIsFocused()
     }
+
+    @Test
+    fun useBcLauncherTakesFocusWhenThereAreNoApps() {
+        showScreen(HomeUiState.Empty, homeButtonMessage = true)
+
+        onUseBcLauncher().assertIsFocused()
+        composeRule.pressKeys(listOf(Key.DirectionCenter))
+        assertEquals(1, homeButtonSettingsOpened)
+    }
 }

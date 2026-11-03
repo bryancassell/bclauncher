@@ -4,61 +4,27 @@ import android.accessibilityservice.AccessibilityService
 import android.app.Application
 import android.content.ComponentName
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Looper
-import android.provider.Settings
 import android.view.KeyEvent
 import android.view.ViewConfiguration
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
-import androidx.datastore.preferences.core.Preferences
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import dagger.hilt.android.testing.BindValue
-import dagger.hilt.android.testing.HiltAndroidRule
-import dagger.hilt.android.testing.HiltAndroidTest
-import dagger.hilt.android.testing.HiltTestApplication
-import dagger.hilt.android.testing.UninstallModules
-import io.github.bryancassell.bclauncher.data.DataStoreModule
-import java.io.File
 import java.time.Duration
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ServiceController
-import org.robolectric.annotation.Config
 
-@HiltAndroidTest
-@Config(application = HiltTestApplication::class)
-@UninstallModules(DataStoreModule::class)
 @RunWith(AndroidJUnit4::class)
 class HomeButtonServiceTest {
-    @get:Rule(order = 0)
-    val hiltRule = HiltAndroidRule(this)
-
-    @get:Rule(order = 1)
-    val folder = TemporaryFolder()
-
-    private val dataStoreScope = CoroutineScope(Dispatchers.Main)
-
-    /** Runs on the main looper, so idling it finishes everything the service started. */
-    @BindValue
-    @JvmField
-    val dataStore: DataStore<Preferences> =
-        PreferenceDataStoreFactory.create(scope = dataStoreScope) {
-            File(folder.root, "test.preferences_pb")
-        }
-
     private val application: Application = ApplicationProvider.getApplicationContext()
     private val controller: ServiceController<HomeButtonService> =
         Robolectric.buildService(HomeButtonService::class.java)
@@ -66,10 +32,10 @@ class HomeButtonServiceTest {
 
     private val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
 
-    @After
-    fun stopDataStore() {
-        dataStoreScope.cancel()
-    }
+    private val googleTvHome = ComponentName(
+        "com.google.android.apps.tv.launcherx",
+        "com.google.android.apps.tv.launcherx.home.HomeActivity",
+    )
 
     private fun idleFor(millis: Long) {
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(millis))
@@ -77,6 +43,11 @@ class HomeButtonServiceTest {
 
     private fun send(action: Int, keyCode: Int = KeyEvent.KEYCODE_HOME) =
         service.onKeyEvent(KeyEvent(action, keyCode))
+
+    private fun sendCancelledUp(): Boolean {
+        val up = KeyEvent(0, 0, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_HOME, 0)
+        return service.onKeyEvent(KeyEvent.changeFlags(up, KeyEvent.FLAG_CANCELED))
+    }
 
     private val startedActivity: Intent? get() = shadowOf(application).nextStartedActivity
 
@@ -87,8 +58,33 @@ class HomeButtonServiceTest {
         assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK, started?.flags)
     }
 
-    private fun setStartCount(count: Int) {
-        Settings.Global.putInt(application.contentResolver, Settings.Global.BOOT_COUNT, count)
+    // Google TV's launcher is the system's Home app, as on a Google TV device.
+    private fun installGoogleTvHome() {
+        val filter = IntentFilter(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            addCategory(Intent.CATEGORY_DEFAULT)
+        }
+        shadowOf(application.packageManager).apply {
+            addActivityIfNotPresent(googleTvHome)
+            addIntentFilterForActivity(googleTvHome, filter)
+        }
+    }
+
+    // The window in front as the service connects, or none.
+    private fun connectWithInFront(packageName: String?) {
+        if (packageName != null) {
+            @Suppress("DEPRECATION")
+            val root = AccessibilityNodeInfo.obtain().apply { this.packageName = packageName }
+            shadowOf(service).setRootInActiveWindow(root)
+        }
+        service.onServiceConnected()
+    }
+
+    private fun windowComesToTheFront(packageName: String) {
+        @Suppress("DEPRECATION")
+        val event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+        event.packageName = packageName
+        service.onAccessibilityEvent(event)
     }
 
     @Test
@@ -127,6 +123,32 @@ class HomeButtonServiceTest {
     }
 
     @Test
+    fun aCancelledPressOpensNothing() {
+        send(KeyEvent.ACTION_DOWN)
+
+        // As when the remote disconnects while Home is held.
+        assertTrue(sendCancelledUp())
+        idleFor(longPressTimeout)
+
+        assertNull(startedActivity)
+        assertEquals(emptyList<Int>(), globalActions)
+    }
+
+    @Test
+    fun aSecondDownStartsTheLongPressTimingAgain() {
+        send(KeyEvent.ACTION_DOWN)
+        idleFor(longPressTimeout - 100)
+
+        // A DOWN with no UP before it, as when the UP was lost.
+        send(KeyEvent.ACTION_DOWN)
+        idleFor(longPressTimeout - 1)
+        assertEquals(emptyList<Int>(), globalActions)
+
+        idleFor(1)
+        assertEquals(listOf(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS), globalActions)
+    }
+
+    @Test
     fun otherKeysGoToTheAppOnScreen() {
         assertFalse(send(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER))
         assertFalse(send(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER))
@@ -146,38 +168,61 @@ class HomeButtonServiceTest {
     }
 
     @Test
-    fun turningTheServiceOnLeavesTheScreenAsItIs() {
-        setStartCount(4)
+    fun opensBcLauncherInPlaceOfGoogleTvsHomeWhenTheTvStarts() {
+        installGoogleTvHome()
 
-        service.onServiceConnected()
-        idleFor(0)
-
-        assertNull(startedActivity)
-    }
-
-    @Test
-    fun opensBcLauncherWhenItConnectsAfterTheTvRestarts() {
-        setStartCount(4)
-        service.onServiceConnected()
-        idleFor(0)
-
-        // Android connects it again once the TV has started.
-        setStartCount(5)
-        service.onServiceConnected()
-        idleFor(0)
+        connectWithInFront(googleTvHome.packageName)
 
         assertOpenedBcLauncher(startedActivity)
     }
 
     @Test
-    fun connectingAgainWithoutARestartLeavesTheScreenAsItIs() {
-        setStartCount(4)
-        service.onServiceConnected()
-        idleFor(0)
+    fun leavesTheAppInFrontWhenItConnects() {
+        installGoogleTvHome()
 
-        // As after an update, or when Android restarts the service after a crash.
-        service.onServiceConnected()
-        idleFor(0)
+        // As when the user has just turned the service on, or the TV started in an HDMI input.
+        connectWithInFront("com.android.tv.settings")
+        windowComesToTheFront(googleTvHome.packageName)
+
+        assertNull(startedActivity)
+    }
+
+    @Test
+    fun opensBcLauncherWhenGoogleTvsHomeIsTheFirstWindowAfterItConnects() {
+        installGoogleTvHome()
+
+        connectWithInFront(null)
+        assertNull(startedActivity)
+        windowComesToTheFront(googleTvHome.packageName)
+
+        assertOpenedBcLauncher(startedActivity)
+    }
+
+    @Test
+    fun leavesTheFirstAppAfterItConnectsWhenItIsNotGoogleTvsHome() {
+        installGoogleTvHome()
+
+        connectWithInFront(null)
+        windowComesToTheFront("com.google.android.youtube.tv")
+        windowComesToTheFront(googleTvHome.packageName)
+
+        assertNull(startedActivity)
+    }
+
+    @Test
+    fun opensNothingOnConnectingWithoutAHomeApp() {
+        connectWithInFront(googleTvHome.packageName)
+
+        assertNull(startedActivity)
+    }
+
+    @Test
+    fun windowsAfterTheFirstOneOpenNothing() {
+        installGoogleTvHome()
+        connectWithInFront("com.google.android.youtube.tv")
+
+        // The user goes back to Google TV's home later, as from an entry for it.
+        windowComesToTheFront(googleTvHome.packageName)
 
         assertNull(startedActivity)
     }

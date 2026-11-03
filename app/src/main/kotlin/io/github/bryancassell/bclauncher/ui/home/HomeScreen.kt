@@ -57,6 +57,10 @@ import kotlin.math.roundToInt
 
 private const val TAG = "HomeScreen"
 
+// The side and the top and bottom margins in Android's TV layout guide, which the grid and the message above it share.
+private val HORIZONTAL_MARGIN = 58.dp
+private val VERTICAL_MARGIN = 28.dp
+
 /** The launcher's home screen: the installed apps in a grid, where selecting one opens it. */
 @Composable
 fun HomeScreen(modifier: Modifier = Modifier, viewModel: HomeViewModel = hiltViewModel()) {
@@ -122,7 +126,9 @@ internal fun HomeScreen(
 ) {
     Surface(modifier = modifier.fillMaxSize()) {
         Column {
-            if (showsHomeButtonMessage) HomeButtonMessage(onUseBcLauncher)
+            if (showsHomeButtonMessage) {
+                HomeButtonMessage(onUseBcLauncher, takesFocus = uiState == HomeUiState.Empty)
+            }
             Box(modifier = Modifier.weight(1f)) {
                 when (uiState) {
                     HomeUiState.Loading -> Unit
@@ -144,12 +150,18 @@ internal fun HomeScreen(
 
 /**
  * Says that Home opens Google TV, with a button that opens Accessibility settings, inside the grid's side margins.
- * Focus starts on the apps, so Select still opens one, and Up from the first row reaches the button.
+ * Focus starts on the apps, so Select still opens one, and Up from the first row reaches the button. With no apps, the
+ * button [takesFocus], since nothing else can, so Select presses it.
  */
 @Composable
-private fun HomeButtonMessage(onUseBcLauncher: () -> Unit) {
+private fun HomeButtonMessage(onUseBcLauncher: () -> Unit, takesFocus: Boolean) {
+    val button = remember { FocusRequester() }
     Column(
-        modifier = Modifier.padding(start = 58.dp, top = 28.dp, end = 58.dp),
+        modifier = Modifier.padding(
+            start = HORIZONTAL_MARGIN,
+            top = VERTICAL_MARGIN,
+            end = HORIZONTAL_MARGIN,
+        ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
@@ -160,9 +172,12 @@ private fun HomeButtonMessage(onUseBcLauncher: () -> Unit) {
             text = stringResource(R.string.home_button_message_detail),
             style = MaterialTheme.typography.bodyMedium,
         )
-        Button(onClick = onUseBcLauncher) {
+        Button(onClick = onUseBcLauncher, modifier = Modifier.focusRequester(button)) {
             Text(text = stringResource(R.string.home_button_use))
         }
+    }
+    LaunchedEffect(takesFocus) {
+        if (takesFocus) button.requestFocus()
     }
 }
 
@@ -200,7 +215,7 @@ private fun AppGrid(
             .fillMaxSize()
             .focusRequester(grid)
             .focusRestorer(),
-        contentPadding = PaddingValues(horizontal = 58.dp, vertical = 28.dp),
+        contentPadding = PaddingValues(horizontal = HORIZONTAL_MARGIN, vertical = VERTICAL_MARGIN),
         verticalArrangement = Arrangement.spacedBy(20.dp),
         horizontalArrangement = Arrangement.spacedBy(20.dp),
     ) {
