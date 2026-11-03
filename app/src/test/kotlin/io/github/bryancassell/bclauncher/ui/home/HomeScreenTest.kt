@@ -66,6 +66,8 @@ class HomeScreenTest {
                     uiState = uiState,
                     showsHomeButtonMessage = showsHomeButtonMessage,
                     onAppClick = { clicked += it },
+                    onAppSettingsClick = {},
+                    onUninstallClick = {},
                     onRetry = { retries++ },
                     onUseBcLauncher = { homeButtonSettingsOpened++ },
                 )

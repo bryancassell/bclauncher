@@ -72,10 +72,11 @@ class FakePackageSource @Inject constructor() : PackageSource {
     }
 }
 
-/** An app whose package and activity names come from its label. */
+/** An app the user installed, whose package and activity names come from its label. */
 fun fakeApp(label: String, packageName: String = "com.example.${label.lowercase()}") = InstalledApp(
     component = ComponentName(packageName, "$packageName.MainActivity"),
     label = label,
     banner = null,
     icon = ColorDrawable(),
+    isSystemApp = false,
 )

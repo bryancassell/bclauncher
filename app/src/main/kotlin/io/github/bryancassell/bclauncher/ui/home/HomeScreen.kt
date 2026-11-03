@@ -25,7 +25,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -61,7 +64,10 @@ private const val TAG = "HomeScreen"
 private val HORIZONTAL_MARGIN = 58.dp
 private val VERTICAL_MARGIN = 28.dp
 
-/** The launcher's home screen: the installed apps in a grid, where selecting one opens it. */
+/**
+ * The launcher's home screen: the installed apps in a grid, where selecting one opens it and holding Select on one
+ * opens its menu.
+ */
 @Composable
 fun HomeScreen(modifier: Modifier = Modifier, viewModel: HomeViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -70,26 +76,38 @@ fun HomeScreen(modifier: Modifier = Modifier, viewModel: HomeViewModel = hiltVie
     val resources = LocalResources.current
     // Back does nothing (PRD.md, Design decisions).
     BackHandler {}
+
+    // The screen starts other apps' activities itself, with the activity's context (ARCHITECTURE.md, Layers and
+    // packages), and says so when one doesn't open.
+    fun start(intent: Intent, failure: String): Boolean =
+        context.startActivitySafely(intent).also { started ->
+            if (!started) Toast.makeText(context, failure, Toast.LENGTH_SHORT).show()
+        }
     HomeScreen(
         uiState = uiState,
         showsHomeButtonMessage = showsHomeButtonMessage,
-        // The screen starts the app itself, with the activity's context (ARCHITECTURE.md, Layers and packages).
         onAppClick = { app ->
-            if (!context.startActivitySafely(app.launchIntent)) {
-                val message = resources.getString(R.string.app_did_not_open, app.label)
-                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                viewModel.onLaunchFailed()
-            }
+            val failure = resources.getString(R.string.app_did_not_open, app.label)
+            if (!start(app.launchIntent, failure)) viewModel.onLaunchFailed()
+        },
+        onAppSettingsClick = { app ->
+            start(
+                app.appSettingsIntent,
+                resources.getString(R.string.app_settings_did_not_open, app.label),
+            )
+        },
+        onUninstallClick = { app ->
+            start(
+                app.uninstallIntent,
+                resources.getString(R.string.uninstall_did_not_open, app.label),
+            )
         },
         onRetry = viewModel::retry,
         onUseBcLauncher = {
-            if (!context.startActivitySafely(viewModel.homeButtonSettingsIntent)) {
-                Toast.makeText(
-                    context,
-                    R.string.home_button_settings_did_not_open,
-                    Toast.LENGTH_SHORT,
-                ).show()
-            }
+            start(
+                viewModel.homeButtonSettingsIntent,
+                resources.getString(R.string.home_button_settings_did_not_open),
+            )
         },
         modifier = modifier,
     )
@@ -120,6 +138,8 @@ internal fun HomeScreen(
     uiState: HomeUiState,
     showsHomeButtonMessage: Boolean,
     onAppClick: (InstalledApp) -> Unit,
+    onAppSettingsClick: (InstalledApp) -> Unit,
+    onUninstallClick: (InstalledApp) -> Unit,
     onRetry: () -> Unit,
     onUseBcLauncher: () -> Unit,
     modifier: Modifier = Modifier,
@@ -136,6 +156,8 @@ internal fun HomeScreen(
                     is HomeUiState.Content -> AppGrid(
                         uiState.apps,
                         onAppClick,
+                        onAppSettingsClick,
+                        onUninstallClick,
                         showsHomeButtonMessage,
                     )
 
@@ -195,15 +217,21 @@ private fun HomeButtonMessage(onUseBcLauncher: () -> Unit, takesFocus: Boolean) 
  * Saving once before an app starts isn't enough: saveFocusedChild() saves the tile focused when it's called, and the
  * restore after a recreation doesn't save it again (Compose UI 1.12.1's FocusRestorer.kt). So a tile reached with the
  * D-pad since then, or anything after a second recreation, went back to the first tile on the Google TV emulator.
+ *
+ * Holding Select on a tile opens its app's menu, which is saved too, so it's still open after a recreation. It closes
+ * when its app leaves the list, as after the user uninstalls it, and doesn't open again if the app comes back.
  */
 @Composable
 private fun AppGrid(
     apps: List<InstalledApp>,
     onAppClick: (InstalledApp) -> Unit,
+    onAppSettingsClick: (InstalledApp) -> Unit,
+    onUninstallClick: (InstalledApp) -> Unit,
     messageShown: Boolean,
 ) {
     val grid = remember { FocusRequester() }
     val focus = remember { GridFocus() }
+    var menuFor by rememberSaveable { mutableStateOf<ComponentName?>(null) }
     // When the focused tile's app leaves the list, as after onLaunchFailed() reloads it, focus goes to the tile that
     // takes its place. Compose clears focus when the focused node is removed and moves it nowhere else, so Select would
     // do nothing.
@@ -225,6 +253,7 @@ private fun AppGrid(
             AppTile(
                 app = app,
                 onClick = { onAppClick(app) },
+                onLongClick = { menuFor = app.component },
                 modifier = Modifier
                     .focusRequester(tile)
                     .onFocusChanged {
@@ -244,6 +273,24 @@ private fun AppGrid(
     // 1.12.1's FocusTargetNode.requestFocus).
     LaunchedEffect(messageShown) {
         if (!grid.restoreFocusedChild()) grid.requestFocus()
+    }
+    val menuApp = apps.find { it.component == menuFor }
+    if (menuApp != null) {
+        AppMenu(
+            app = menuApp,
+            onOptionClick = { option ->
+                menuFor = null
+                when (option) {
+                    AppOption.Launch -> onAppClick(menuApp)
+                    AppOption.AppSettings -> onAppSettingsClick(menuApp)
+                    AppOption.Uninstall -> onUninstallClick(menuApp)
+                }
+            },
+            onDismiss = { menuFor = null },
+        )
+    }
+    LaunchedEffect(menuApp == null) {
+        if (menuApp == null) menuFor = null
     }
 }
 
@@ -274,8 +321,13 @@ private class GridFocus {
  * a banner already shows.
  */
 @Composable
-private fun AppTile(app: InstalledApp, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Card(onClick = onClick, modifier = modifier.aspectRatio(16f / 9f)) {
+private fun AppTile(
+    app: InstalledApp,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(onClick = onClick, onLongClick = onLongClick, modifier = modifier.aspectRatio(16f / 9f)) {
         val banner = app.banner
         if (banner != null) {
             Image(

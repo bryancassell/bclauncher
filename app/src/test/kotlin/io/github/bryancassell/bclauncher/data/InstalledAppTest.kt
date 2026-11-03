@@ -1,6 +1,8 @@
 package io.github.bryancassell.bclauncher.data
 
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -21,5 +23,23 @@ class InstalledAppTest {
             Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
             intent.flags,
         )
+    }
+
+    @Test
+    fun appSettingsIntentOpensTheAppsAppInfoScreenInAFreshTask() {
+        val intent = fakeApp("YouTube").appSettingsIntent
+
+        assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, intent.action)
+        assertEquals(Uri.parse("package:com.example.youtube"), intent.data)
+        assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK, intent.flags)
+    }
+
+    @Test
+    fun uninstallIntentAsksToUninstallThePackageInItsOwnTask() {
+        val intent = fakeApp("YouTube").uninstallIntent
+
+        assertEquals(Intent.ACTION_DELETE, intent.action)
+        assertEquals(Uri.parse("package:com.example.youtube"), intent.data)
+        assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK, intent.flags)
     }
 }
