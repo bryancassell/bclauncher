@@ -152,6 +152,41 @@ class PackageManagerSourceTest {
     }
 
     @Test
+    fun homeActivityIsTheOneAHomeIntentOpens() {
+        install("com.example.tvapp")
+        install(GOOGLE_TV, category = Intent.CATEGORY_HOME)
+
+        assertEquals(ComponentName(GOOGLE_TV, "$GOOGLE_TV.MainActivity"), source.homeActivity())
+    }
+
+    @Test
+    fun homeActivityIsNullWithoutAHomeApp() {
+        install("com.example.tvapp")
+
+        assertNull(source.homeActivity())
+    }
+
+    @Test
+    fun homeActivityIsTheAliasTheHomeFilterIsOn() {
+        install(GOOGLE_TV)
+        val alias = ActivityInfo().apply {
+            packageName = GOOGLE_TV
+            name = "$GOOGLE_TV.HomeAlias"
+            targetActivity = "$GOOGLE_TV.MainActivity"
+            exported = true
+            applicationInfo = ApplicationInfo().apply { packageName = GOOGLE_TV }
+        }
+        packageManager.addOrUpdateActivity(alias)
+        packageManager.addIntentFilterForActivity(
+            ComponentName(GOOGLE_TV, alias.name),
+            IntentFilter(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_HOME) },
+        )
+
+        // Started by the alias, as Android starts a Home intent.
+        assertEquals(ComponentName(GOOGLE_TV, alias.name), source.homeActivity())
+    }
+
+    @Test
     fun emitsOnceListeningThenWhenAPackageIsAddedOrRemoved() = runTest {
         val changes = countChanges()
         assertEquals(1, changes())
@@ -190,5 +225,6 @@ class PackageManagerSourceTest {
         const val APPLICATION_BANNER = 0x7f010001
         const val ACTIVITY_BANNER = 0x7f010002
         const val HELD_PERMISSION = "com.example.permission.HELD"
+        const val GOOGLE_TV = "com.google.android.apps.tv.launcherx"
     }
 }

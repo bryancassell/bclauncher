@@ -12,6 +12,7 @@ import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.bryancassell.bclauncher.R
@@ -28,6 +30,7 @@ import io.github.bryancassell.bclauncher.data.InstalledApp
 import io.github.bryancassell.bclauncher.data.fakeApp
 import io.github.bryancassell.bclauncher.ui.theme.BcLauncherTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -52,12 +55,18 @@ class HomeScreenTest {
     private val clicked = mutableListOf<InstalledApp>()
     private var retries = 0
     private var homeButtonSettingsOpened = 0
+    private var googleTvOpened = 0
+    private var settingsOpened = 0
 
     // A test changes what the screen shows by setting these after showScreen.
     private var uiState by mutableStateOf<HomeUiState>(HomeUiState.Loading)
     private var showsHomeButtonMessage by mutableStateOf(false)
 
-    private fun showScreen(initial: HomeUiState, homeButtonMessage: Boolean = false) {
+    private fun showScreen(
+        initial: HomeUiState,
+        homeButtonMessage: Boolean = false,
+        googleTv: Boolean = true,
+    ) {
         uiState = initial
         showsHomeButtonMessage = homeButtonMessage
         composeRule.setContent {
@@ -68,10 +77,21 @@ class HomeScreenTest {
                     onAppClick = { clicked += it },
                     onRetry = { retries++ },
                     onUseBcLauncher = { homeButtonSettingsOpened++ },
+                    showsGoogleTv = googleTv,
+                    onGoogleTv = { googleTvOpened++ },
+                    onSettings = { settingsOpened++ },
                 )
             }
         }
     }
+
+    private fun onGoogleTv() = composeRule.onNode(
+        hasText(context.getString(R.string.google_tv)) and hasClickAction(),
+    )
+
+    private fun onSettings() = composeRule.onNode(
+        hasText(context.getString(R.string.settings)) and hasClickAction(),
+    )
 
     private fun onUseBcLauncher() = composeRule.onNode(
         hasText(context.getString(R.string.home_button_use)) and hasClickAction(),
@@ -82,10 +102,12 @@ class HomeScreenTest {
         (1..count).map { fakeApp("App $it").copy(banner = ColorDrawable()) }
 
     @Test
-    fun showsNothingWhileLoading() {
+    fun showsOnlyGoogleTvAndSettingsWhileLoading() {
         showScreen(HomeUiState.Loading)
 
-        composeRule.onAllNodes(hasClickAction()).assertCountEquals(0)
+        onGoogleTv().assertIsDisplayed()
+        onSettings().assertIsDisplayed()
+        composeRule.onAllNodes(hasClickAction()).assertCountEquals(2)
         composeRule.onAllNodesWithText(context.getString(R.string.home_empty)).assertCountEquals(0)
         composeRule.onAllNodesWithText(context.getString(R.string.home_error)).assertCountEquals(0)
     }
@@ -95,7 +117,8 @@ class HomeScreenTest {
         showScreen(HomeUiState.Empty)
 
         composeRule.onNodeWithText(context.getString(R.string.home_empty)).assertIsDisplayed()
-        composeRule.onAllNodes(hasClickAction()).assertCountEquals(0)
+        // Google TV and Settings are all there is to select.
+        composeRule.onAllNodes(hasClickAction()).assertCountEquals(2)
     }
 
     @Test
@@ -280,6 +303,109 @@ class HomeScreenTest {
         composeRule.onNode(
             hasText(context.getString(R.string.home_retry)) and hasClickAction(),
         ).assertIsFocused()
+    }
+
+    @Test
+    fun googleTvAndSettingsSitAtTheTopRightAboveTheApps() {
+        showScreen(HomeUiState.Content(bannerApps(6)))
+
+        val googleTv = onGoogleTv().getUnclippedBoundsInRoot()
+        val settings = onSettings().getUnclippedBoundsInRoot()
+        val lastTileInTheRow = composeRule.onTile("App 6").getUnclippedBoundsInRoot()
+        assertEquals(googleTv.top, settings.top)
+        assertTrue(googleTv.right < settings.left)
+        // Settings ends where the row of tiles does, at the right margin.
+        assertEquals(lastTileInTheRow.right, settings.right)
+        assertTrue(settings.bottom < lastTileInTheRow.top)
+    }
+
+    @Test
+    fun fiveRowsOfAppsFitAboveTheBottomMarginBelowGoogleTvAndSettings() {
+        showScreen(HomeUiState.Content(bannerApps(30)))
+
+        val lastTile = composeRule.onTile("App 30").getUnclippedBoundsInRoot()
+        val screen = composeRule.onRoot().getUnclippedBoundsInRoot()
+        // The bottom margin in Android's TV layout guide.
+        assertTrue(lastTile.bottom <= screen.bottom - 28.dp)
+    }
+
+    @Test
+    fun hidesGoogleTvWhenThereIsNoHomeToOpen() {
+        showScreen(HomeUiState.Content(bannerApps(3)), googleTv = false)
+
+        onGoogleTv().assertDoesNotExist()
+        onSettings().assertIsDisplayed()
+    }
+
+    @Test
+    fun upFromTheFirstRowReachesGoogleTvWhichSelectOpens() {
+        showScreen(HomeUiState.Content(bannerApps(8)))
+
+        composeRule.pressKeys(listOf(Key.DirectionUp))
+        onGoogleTv().assertIsFocused()
+
+        composeRule.pressKeys(listOf(Key.DirectionCenter))
+        assertEquals(1, googleTvOpened)
+        assertEquals(emptyList<InstalledApp>(), clicked)
+    }
+
+    @Test
+    fun rightFromGoogleTvReachesSettingsWhichSelectOpens() {
+        showScreen(HomeUiState.Content(bannerApps(8)))
+
+        composeRule.pressKeys(listOf(Key.DirectionUp, Key.DirectionRight))
+        onSettings().assertIsFocused()
+
+        composeRule.pressKeys(listOf(Key.DirectionCenter))
+        assertEquals(1, settingsOpened)
+        assertEquals(0, googleTvOpened)
+    }
+
+    @Test
+    fun downFromTheButtonsReturnsToTheTileFocusLeft() {
+        showScreen(HomeUiState.Content(bannerApps(8)))
+
+        composeRule.pressKeys(
+            listOf(Key.DirectionRight, Key.DirectionRight, Key.DirectionUp, Key.DirectionDown),
+        )
+
+        composeRule.onTile("App 3").assertIsFocused()
+    }
+
+    @Test
+    fun upFromUseBcLauncherReachesGoogleTv() {
+        showScreen(HomeUiState.Content(bannerApps(8)), homeButtonMessage = true)
+
+        composeRule.pressKeys(listOf(Key.DirectionUp, Key.DirectionUp))
+
+        onGoogleTv().assertIsFocused()
+    }
+
+    @Test
+    fun googleTvTakesFocusWhenThereAreNoApps() {
+        showScreen(HomeUiState.Empty)
+
+        onGoogleTv().assertIsFocused()
+        composeRule.pressKeys(listOf(Key.DirectionCenter))
+        assertEquals(1, googleTvOpened)
+    }
+
+    @Test
+    fun settingsTakesFocusWhenThereAreNoAppsAndNoGoogleTv() {
+        showScreen(HomeUiState.Empty, googleTv = false)
+
+        onSettings().assertIsFocused()
+    }
+
+    @Test
+    fun googleTvTakesFocusWhenTheHomeButtonMessageLeavesWithNoApps() {
+        showScreen(HomeUiState.Empty, homeButtonMessage = true)
+        onUseBcLauncher().assertIsFocused()
+
+        // The user turned on the service in Accessibility settings and came back.
+        showsHomeButtonMessage = false
+
+        onGoogleTv().assertIsFocused()
     }
 
     @Test

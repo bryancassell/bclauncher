@@ -1,11 +1,13 @@
 package io.github.bryancassell.bclauncher.data
 
+import android.app.Application
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.bryancassell.bclauncher.HomeButtonService
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -16,6 +18,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 
 @RunWith(AndroidJUnit4::class)
 class HomeButtonRepositoryTest {
@@ -60,5 +63,14 @@ class HomeButtonRepositoryTest {
 
         assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, intent.action)
         assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK, intent.flags)
+    }
+
+    @Test
+    fun openingGoogleTvHomeTellsTheServiceInThisAppAlone() {
+        repository.openingGoogleTvHome()
+
+        val broadcast = shadowOf(context as Application).broadcastIntents.single()
+        assertEquals(HomeButtonService.ACTION_OPENING_GOOGLE_TV_HOME, broadcast.action)
+        assertEquals(context.packageName, broadcast.`package`)
     }
 }

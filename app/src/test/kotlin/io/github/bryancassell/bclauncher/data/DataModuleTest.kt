@@ -1,5 +1,6 @@
 package io.github.bryancassell.bclauncher.data
 
+import android.content.ComponentName
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -37,6 +38,9 @@ class DataModuleTest {
     @Inject
     lateinit var accessibilitySource: FakeAccessibilitySource
 
+    @Inject
+    lateinit var systemScreensRepository: SystemScreensRepository
+
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     @Before
@@ -58,5 +62,13 @@ class DataModuleTest {
         accessibilitySource.setEnabledServices(homeButtonService(context))
 
         assertTrue(homeButtonRepository.isOn.first())
+    }
+
+    @Test
+    fun injectedSystemScreensRepositoryOpensTheSourcesHomeActivity() = runTest {
+        val home = ComponentName("com.example.home", "com.example.home.HomeActivity")
+        packageSource.setHome(home)
+
+        assertEquals(home, systemScreensRepository.googleTvHomeIntent.first()?.component)
     }
 }

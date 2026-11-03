@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.map
 
 /** Whether the remote's Home button opens BC Launcher, which it does while [HomeButtonService] is on. */
 class HomeButtonRepository @Inject constructor(
-    @ApplicationContext context: Context,
+    @ApplicationContext private val context: Context,
     accessibilitySource: AccessibilitySource,
 ) {
     private val service = ComponentName(context, HomeButtonService::class.java)
@@ -31,4 +31,14 @@ class HomeButtonRepository @Inject constructor(
     val settingsIntent: Intent
         get() = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    /**
+     * Tells [HomeButtonService] that the user is opening Google TV's home, so it doesn't open BC Launcher in its place.
+     * Call it just before starting Google TV's home. It runs in another process, so this is a broadcast.
+     */
+    fun openingGoogleTvHome() {
+        context.sendBroadcast(
+            Intent(HomeButtonService.ACTION_OPENING_GOOGLE_TV_HOME).setPackage(context.packageName),
+        )
+    }
 }

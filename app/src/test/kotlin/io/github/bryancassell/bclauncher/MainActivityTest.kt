@@ -1,12 +1,16 @@
 package io.github.bryancassell.bclauncher
 
 import android.app.Application
+import android.content.ComponentName
+import android.content.Intent
 import android.graphics.drawable.ColorDrawable
 import android.provider.Settings
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.lifecycle.Lifecycle
@@ -204,5 +208,71 @@ class MainActivityTest {
             application.getString(R.string.home_button_message),
         ).assertDoesNotExist()
         composeRule.onTile("Netflix").assertIsFocused()
+    }
+
+    private val googleTvHome = ComponentName(
+        "com.google.android.apps.tv.launcherx",
+        "com.google.android.apps.tv.launcherx.home.HomeActivity",
+    )
+
+    // From the first tile, past Use BC Launcher in the message.
+    private val toGoogleTv = listOf(Key.DirectionUp, Key.DirectionUp)
+
+    @Test
+    fun googleTvTellsTheHomeButtonServiceThenOpensGoogleTvsHome() {
+        packageSource.setHome(googleTvHome)
+
+        composeRule.pressKeys(toGoogleTv + Key.DirectionCenter)
+
+        assertEquals(
+            HomeButtonService.ACTION_OPENING_GOOGLE_TV_HOME,
+            shadowOf(application).broadcastIntents.single().action,
+        )
+        val started = shadowOf(application).nextStartedActivity
+        assertEquals(googleTvHome, started.component)
+        assertTrue(started.hasCategory(Intent.CATEGORY_HOME))
+    }
+
+    @Test
+    fun googleTvsHomeThatDoesNotOpenIsReported() {
+        packageSource.setHome(googleTvHome)
+        // Robolectric's package manager has no Google TV, so checking activities makes starting it fail.
+        shadowOf(application).checkActivities(true)
+
+        composeRule.pressKeys(toGoogleTv + Key.DirectionCenter)
+
+        assertEquals(
+            application.getString(R.string.google_tv_did_not_open),
+            ShadowToast.getTextOfLatestToast(),
+        )
+    }
+
+    @Test
+    fun noGoogleTvWithoutAHomeActivity() {
+        composeRule.onNode(
+            hasText(application.getString(R.string.google_tv)) and hasClickAction(),
+        ).assertDoesNotExist()
+    }
+
+    @Test
+    fun settingsOpensDeviceSettings() {
+        packageSource.setHome(googleTvHome)
+
+        composeRule.pressKeys(toGoogleTv + Key.DirectionRight + Key.DirectionCenter)
+
+        assertEquals(Settings.ACTION_SETTINGS, shadowOf(application).nextStartedActivity.action)
+    }
+
+    @Test
+    fun settingsThatDoNotOpenAreReported() {
+        shadowOf(application).checkActivities(true)
+
+        // With no Google TV, Up from Use BC Launcher reaches Settings.
+        composeRule.pressKeys(toGoogleTv + Key.DirectionCenter)
+
+        assertEquals(
+            application.getString(R.string.settings_did_not_open),
+            ShadowToast.getTextOfLatestToast(),
+        )
     }
 }

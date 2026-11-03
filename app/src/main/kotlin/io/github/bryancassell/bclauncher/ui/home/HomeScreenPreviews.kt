@@ -39,6 +39,9 @@ private fun HomeScreenPreview() {
             onAppClick = {},
             onRetry = {},
             onUseBcLauncher = {},
+            showsGoogleTv = true,
+            onGoogleTv = {},
+            onSettings = {},
         )
     }
 }
@@ -53,6 +56,9 @@ private fun EmptyHomeScreenPreview() {
             onAppClick = {},
             onRetry = {},
             onUseBcLauncher = {},
+            showsGoogleTv = true,
+            onGoogleTv = {},
+            onSettings = {},
         )
     }
 }

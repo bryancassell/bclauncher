@@ -53,6 +53,9 @@ class HomeScreenScreenshotTest {
                     onAppClick = {},
                     onRetry = {},
                     onUseBcLauncher = {},
+                    showsGoogleTv = true,
+                    onGoogleTv = {},
+                    onSettings = {},
                 )
             }
         }

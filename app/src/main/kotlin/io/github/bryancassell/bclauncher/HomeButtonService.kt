@@ -6,8 +6,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.PackageManager
-import android.content.pm.ResolveInfo
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
@@ -17,6 +15,8 @@ import android.view.KeyEvent
 import android.view.ViewConfiguration
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityWindowInfo
+import androidx.core.content.ContextCompat
+import io.github.bryancassell.bclauncher.data.resolveHomeActivity
 
 /**
  * How long after handing Home to Android BC Launcher opens. On a Google TV Streamer, Google TV's home started 25 to 39
@@ -82,6 +82,19 @@ class HomeButtonService : AccessibilityService() {
         }
     }
 
+    /**
+     * Ends both waits when the home screen's Google TV button opens Google TV's home, so BC Launcher doesn't open in
+     * its place (#6). The button sends this just before it starts Google TV's home. On the Google TV emulator (API 36),
+     * it arrived 1 to 3 ms after the start, and 60 to 200 ms before Google TV's window event, which also comes on the
+     * main thread.
+     */
+    private val openingGoogleTvHome = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            waitingForFront = false
+            handOffGuardUntil = 0L
+        }
+    }
+
     // The system's Home activity, Google TV's home, from when the service connects.
     private var googleTvHome: ComponentName? = null
 
@@ -102,6 +115,14 @@ class HomeButtonService : AccessibilityService() {
         } else {
             registerReceiver(dreams, filter)
         }
+        // Not exported, so only BC Launcher can end the waits. Before API 33, ContextCompat has the sender hold a
+        // signature permission that androidx.core's manifest declares.
+        ContextCompat.registerReceiver(
+            this,
+            openingGoogleTvHome,
+            IntentFilter(ACTION_OPENING_GOOGLE_TV_HOME),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
     }
 
     /**
@@ -116,7 +137,7 @@ class HomeButtonService : AccessibilityService() {
     public override fun onServiceConnected() {
         // The window's activity, not an <activity-alias> the Home filter may be on, is what window events name.
         googleTvHome =
-            resolveHome()?.activityInfo?.let {
+            packageManager.resolveHomeActivity()?.activityInfo?.let {
                 ComponentName(
                     it.packageName,
                     it.targetActivity ?: it.name,
@@ -175,18 +196,6 @@ class HomeButtonService : AccessibilityService() {
     private fun frontApplicationWindow(): AccessibilityWindowInfo? =
         windows.firstOrNull { it.isActive && it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
 
-    // BC Launcher declares no Home filter, so this is the system's Home app, which the manifest's <queries> makes
-    // visible from API 30.
-    private fun resolveHome(): ResolveInfo? {
-        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            packageManager.resolveActivity(intent, PackageManager.ResolveInfoFlags.of(0))
-        } else {
-            @Suppress("DEPRECATION")
-            packageManager.resolveActivity(intent, 0)
-        }
-    }
-
     public override fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode != KeyEvent.KEYCODE_HOME) return false
         when (event.action) {
@@ -229,6 +238,13 @@ class HomeButtonService : AccessibilityService() {
         handler.removeCallbacksAndMessages(null)
         queries.quitSafely()
         unregisterReceiver(dreams)
+        unregisterReceiver(openingGoogleTvHome)
         super.onDestroy()
+    }
+
+    companion object {
+        /** Sent to BC Launcher alone, just before the home screen opens Google TV's home. */
+        const val ACTION_OPENING_GOOGLE_TV_HOME =
+            "io.github.bryancassell.bclauncher.action.OPENING_GOOGLE_TV_HOME"
     }
 }

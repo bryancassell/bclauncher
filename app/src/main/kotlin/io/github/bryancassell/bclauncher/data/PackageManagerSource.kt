@@ -57,6 +57,12 @@ class PackageManagerSource @Inject constructor(@ApplicationContext private val c
         return context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
     }
 
+    // Named by the activity the Home filter is on, which may be an <activity-alias>, so it starts as Android would.
+    override fun homeActivity(): ComponentName? =
+        packageManager.resolveHomeActivity()?.activityInfo?.let {
+            ComponentName(it.packageName, it.name)
+        }
+
     private fun queryActivities(intent: Intent): List<ResolveInfo> =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             packageManager.queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(0))
@@ -79,6 +85,22 @@ class PackageManagerSource @Inject constructor(@ApplicationContext private val c
             context.unregisterComponentCallbacks(localeCallback)
             launcherApps.unregisterCallback(callback)
         }
+    }
+}
+
+/**
+ * The system's Home activity, which an ACTION_MAIN and CATEGORY_HOME intent opens: Google TV's home on Google TV. Never
+ * BC Launcher, which declares no Home filter (ARCHITECTURE.md, Home button). The manifest's `<queries>` makes it
+ * visible from API 30. HomeButtonService and the home screen's Google TV button both find it here, so the button opens
+ * the activity the service watches for.
+ */
+internal fun PackageManager.resolveHomeActivity(): ResolveInfo? {
+    val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        resolveActivity(intent, PackageManager.ResolveInfoFlags.of(0))
+    } else {
+        @Suppress("DEPRECATION")
+        resolveActivity(intent, 0)
     }
 }
 

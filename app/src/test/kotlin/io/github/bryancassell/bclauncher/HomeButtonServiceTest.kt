@@ -15,6 +15,8 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.bryancassell.bclauncher.data.FakeAccessibilitySource
+import io.github.bryancassell.bclauncher.data.HomeButtonRepository
 import java.time.Duration
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -34,7 +36,14 @@ class HomeButtonServiceTest {
     private val application: Application = ApplicationProvider.getApplicationContext()
     private val controller: ServiceController<HomeButtonService> =
         Robolectric.buildService(HomeButtonService::class.java)
-    private val service: HomeButtonService by lazy { controller.create().get() }
+    private val service: HomeButtonService by lazy {
+        // Before API 33, ContextCompat registers the service's receiver for BC Launcher alone with this permission,
+        // which androidx.core's manifest declares and Android grants at install, but Robolectric doesn't.
+        shadowOf(
+            application,
+        ).grantPermissions("${application.packageName}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
+        controller.create().get()
+    }
 
     private val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
 
@@ -150,6 +159,13 @@ class HomeButtonServiceTest {
 
     private fun googleTvsHomeComesToTheFront() {
         windowComesToTheFront(googleTvHome.packageName, googleTvHome.className)
+    }
+
+    // As the home screen's Google TV button does: it tells the service, then Google TV's home comes to the front.
+    private fun openGoogleTvsHomeFromBcLauncher() {
+        HomeButtonRepository(application, FakeAccessibilitySource()).openingGoogleTvHome()
+        idleFor(0)
+        googleTvsHomeComesToTheFront()
     }
 
     // The service connected with BC Launcher in front, then the user pressed Home and BC Launcher opened.
@@ -329,6 +345,25 @@ class HomeButtonServiceTest {
         idleFor(40)
         assertOpenedBcLauncher(startedActivity)
         googleTvsHomeComesToTheFront()
+
+        assertNull(startedActivity)
+    }
+
+    @Test
+    fun openingGoogleTvsHomeFromBcLauncherEndsTheWaitAfterAHandOff() {
+        handOffWithGoogleTvHome()
+
+        openGoogleTvsHomeFromBcLauncher()
+
+        assertNull(startedActivity)
+    }
+
+    @Test
+    fun openingGoogleTvsHomeFromBcLauncherEndsTheWaitAfterConnecting() {
+        installGoogleTvHome()
+        connectWithInFront(null)
+
+        openGoogleTvsHomeFromBcLauncher()
 
         assertNull(startedActivity)
     }
