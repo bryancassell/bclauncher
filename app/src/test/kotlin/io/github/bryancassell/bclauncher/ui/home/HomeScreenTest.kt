@@ -12,14 +12,17 @@ import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.pressKey
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -80,6 +83,10 @@ class HomeScreenTest {
     // Apps with banners, named App 1 to App [count].
     private fun bannerApps(count: Int) =
         (1..count).map { fakeApp("App $it").copy(banner = ColorDrawable()) }
+
+    // Apps with banners, named New 1 to New [count].
+    private fun newApps(count: Int) =
+        (1..count).map { fakeApp("New $it").copy(banner = ColorDrawable()) }
 
     @Test
     fun showsNothingWhileLoading() {
@@ -203,6 +210,55 @@ class HomeScreenTest {
         uiState = HomeUiState.Content(apps - apps[0] - apps[3])
 
         composeRule.onTile("App 5").assertIsFocused()
+    }
+
+    // With more than 30 apps the grid scrolls. These tests move focus down the first column only: below the screen,
+    // Robolectric's Down goes to the tile after the last one composed, which is in the first column.
+
+    @Test
+    fun theFocusedTileStaysInPlaceWhenTilesAreAddedBeforeIt() {
+        val apps = bannerApps(96)
+        showScreen(HomeUiState.Content(apps))
+        // The grid scrolls to show App 43, which ends up on the bottom row.
+        composeRule.pressKeys(List(7) { Key.DirectionDown })
+        val bounds = composeRule.onTile("App 43").assertIsFocused().getUnclippedBoundsInRoot()
+
+        // Two rows of apps are installed between the first tile on screen and App 43.
+        uiState = HomeUiState.Content(apps.take(13) + newApps(12) + apps.drop(13))
+
+        composeRule.onTile("App 43").assertIsFocused().assertIsDisplayed()
+        assertEquals(bounds, composeRule.onTile("App 43").getUnclippedBoundsInRoot())
+    }
+
+    @Test
+    fun focusMovesToTheTileThatTakesTheRemovedTilesPlaceOnScreen() {
+        val apps = bannerApps(48)
+        showScreen(HomeUiState.Content(apps))
+        composeRule.pressKeys(List(4) { Key.DirectionDown })
+        val bounds = composeRule.onTile("App 25").assertIsFocused().getUnclippedBoundsInRoot()
+
+        // One reload drops App 25 and adds two rows of apps before it, so App 26 takes its place two rows further on.
+        uiState = HomeUiState.Content(apps.take(1) + newApps(12) + apps.drop(1) - apps[24])
+
+        composeRule.onTile("App 26").assertIsFocused().assertIsDisplayed()
+        assertEquals(bounds, composeRule.onTile("App 26").getUnclippedBoundsInRoot())
+    }
+
+    @Test
+    fun theTileThatTookTheRemovedTilesPlaceDoesNotTakeFocusBackLater() {
+        val apps = bannerApps(96)
+        showScreen(HomeUiState.Content(apps))
+        composeRule.pressKeys(List(4) { Key.DirectionDown })
+        uiState = HomeUiState.Content(apps - apps[24])
+        composeRule.pressKeys(listOf(Key.DirectionRight))
+        composeRule.onTile("App 27").assertIsFocused()
+
+        // The grid scrolls App 26 out of view and back, as moving focus far down and back up does.
+        val grid = composeRule.onNode(hasScrollToIndexAction())
+        grid.performScrollToIndex(90)
+        grid.performScrollToIndex(0)
+
+        composeRule.onTile("App 27").assertIsFocused()
     }
 
     @Test
