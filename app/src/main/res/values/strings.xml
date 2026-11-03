@@ -12,7 +12,7 @@
     <!-- Shown when App settings in an app's menu doesn't open its App info screen. %1$s is the app's name. -->
     <string name="app_settings_did_not_open">Couldn\'t open the settings for %1$s</string>
     <!-- Shown when Uninstall in an app's menu doesn't open the system's uninstall screen. %1$s is the app's name. -->
-    <string name="uninstall_did_not_open">Couldn\'t uninstall %1$s</string>
+    <string name="uninstall_did_not_open">Couldn\'t open the uninstaller for %1$s</string>
     <!-- Shown above the apps until the user turns on BC Launcher's accessibility service. -->
     <string name="home_button_message">Pressing Home opens Google TV</string>
     <string name="home_button_message_detail">To have it open BC Launcher, select BC Launcher in Accessibility settings and turn it on. BC Launcher then sees which buttons you press on the remote and which app is on screen, and uses them only to open BC Launcher or Google TV\'s panel.</string>

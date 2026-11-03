@@ -26,9 +26,10 @@ class HomeButtonRepository @Inject constructor(
     /**
      * Opens Accessibility settings, where the user turns [HomeButtonService] on or off. Not the service's own page:
      * ACTION_ACCESSIBILITY_DETAILS_SETTINGS opens nothing on the Google TV emulator (API 36) or a Google TV Streamer
-     * (Android 14) (#10).
+     * (Android 14) (#10). Clearing Settings' task first means Back returns to BC Launcher, not to a Settings screen the
+     * user left open earlier (#7).
      */
     val settingsIntent: Intent
         get() = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
 }

@@ -9,6 +9,8 @@ import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
+import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,6 +50,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
 import androidx.tv.material3.Card
@@ -79,35 +83,35 @@ fun HomeScreen(modifier: Modifier = Modifier, viewModel: HomeViewModel = hiltVie
 
     // The screen starts other apps' activities itself, with the activity's context (ARCHITECTURE.md, Layers and
     // packages), and says so when one doesn't open.
-    fun start(intent: Intent, failure: String): Boolean =
+    fun start(intent: Intent, @StringRes failure: Int, vararg formatArgs: Any): Boolean =
         context.startActivitySafely(intent).also { started ->
-            if (!started) Toast.makeText(context, failure, Toast.LENGTH_SHORT).show()
+            if (!started) {
+                val message = resources.getString(failure, *formatArgs)
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            }
         }
     HomeScreen(
         uiState = uiState,
         showsHomeButtonMessage = showsHomeButtonMessage,
         onAppClick = { app ->
-            val failure = resources.getString(R.string.app_did_not_open, app.label)
-            if (!start(app.launchIntent, failure)) viewModel.onLaunchFailed()
+            if (!start(
+                    app.launchIntent,
+                    R.string.app_did_not_open,
+                    app.label,
+                )
+            ) {
+                viewModel.onLaunchFailed()
+            }
         },
         onAppSettingsClick = { app ->
-            start(
-                app.appSettingsIntent,
-                resources.getString(R.string.app_settings_did_not_open, app.label),
-            )
+            start(app.appSettingsIntent, R.string.app_settings_did_not_open, app.label)
         },
         onUninstallClick = { app ->
-            start(
-                app.uninstallIntent,
-                resources.getString(R.string.uninstall_did_not_open, app.label),
-            )
+            start(app.uninstallIntent, R.string.uninstall_did_not_open, app.label)
         },
         onRetry = viewModel::retry,
         onUseBcLauncher = {
-            start(
-                viewModel.homeButtonSettingsIntent,
-                resources.getString(R.string.home_button_settings_did_not_open),
-            )
+            start(viewModel.homeButtonSettingsIntent, R.string.home_button_settings_did_not_open)
         },
         modifier = modifier,
     )
@@ -218,8 +222,10 @@ private fun HomeButtonMessage(onUseBcLauncher: () -> Unit, takesFocus: Boolean) 
  * restore after a recreation doesn't save it again (Compose UI 1.12.1's FocusRestorer.kt). So a tile reached with the
  * D-pad since then, or anything after a second recreation, went back to the first tile on the Google TV emulator.
  *
- * Holding Select on a tile opens its app's menu, which is saved too, so it's still open after a recreation. It closes
- * when its app leaves the list, as after the user uninstalls it, and doesn't open again if the app comes back.
+ * Holding Select on a tile opens its app's menu. It's saved too, so it's still open after a configuration change
+ * recreates the activity. Otherwise it closes when the screen stops, so Home or coming back from another app shows the
+ * grid. It also closes when its app leaves the list, as after the user uninstalls it, and doesn't open again if the app
+ * comes back.
  */
 @Composable
 private fun AppGrid(
@@ -232,6 +238,10 @@ private fun AppGrid(
     val grid = remember { FocusRequester() }
     val focus = remember { GridFocus() }
     var menuFor by rememberSaveable { mutableStateOf<ComponentName?>(null) }
+    val activity = LocalActivity.current
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if (activity?.isChangingConfigurations != true) menuFor = null
+    }
     // When the focused tile's app leaves the list, as after onLaunchFailed() reloads it, focus goes to the tile that
     // takes its place. Compose clears focus when the focused node is removed and moves it nowhere else, so Select would
     // do nothing.
@@ -289,8 +299,8 @@ private fun AppGrid(
             onDismiss = { menuFor = null },
         )
     }
-    LaunchedEffect(menuApp == null) {
-        if (menuApp == null) menuFor = null
+    LaunchedEffect(apps) {
+        if (apps.none { it.component == menuFor }) menuFor = null
     }
 }
 

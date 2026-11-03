@@ -55,10 +55,10 @@ class HomeButtonRepositoryTest {
     }
 
     @Test
-    fun settingsIntentOpensAccessibilitySettingsInTheirOwnTask() {
+    fun settingsIntentOpensAccessibilitySettingsInAFreshTask() {
         val intent = repository.settingsIntent
 
         assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, intent.action)
-        assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK, intent.flags)
+        assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK, intent.flags)
     }
 }

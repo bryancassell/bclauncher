@@ -28,6 +28,7 @@ import io.github.bryancassell.bclauncher.data.IoDispatcher
 import io.github.bryancassell.bclauncher.data.fakeApp
 import io.github.bryancassell.bclauncher.data.homeButtonService
 import io.github.bryancassell.bclauncher.ui.home.holdSelect
+import io.github.bryancassell.bclauncher.ui.home.onMenu
 import io.github.bryancassell.bclauncher.ui.home.onTile
 import io.github.bryancassell.bclauncher.ui.home.pressKeys
 import io.github.bryancassell.bclauncher.ui.home.pressKeysInMenu
@@ -178,6 +179,19 @@ class MainActivityTest {
             application.getString(R.string.uninstall_did_not_open, "Plex"),
             ShadowToast.getTextOfLatestToast(),
         )
+    }
+
+    @Test
+    fun anAppsMenuClosesWhenTheUserLeavesTheHomeScreen() {
+        composeRule.pressKeys(listOf(Key.DirectionRight))
+        composeRule.holdSelect()
+
+        // Home, or another app, covers the home screen, which then comes back.
+        composeRule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+        composeRule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+
+        composeRule.onMenu().assertDoesNotExist()
+        composeRule.onTile("Plex").assertIsFocused()
     }
 
     @Test

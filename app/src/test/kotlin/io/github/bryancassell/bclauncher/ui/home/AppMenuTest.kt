@@ -154,6 +154,36 @@ class AppMenuTest {
     }
 
     @Test
+    fun theHeldPressDoesNotChooseAnEntryAfterAnotherKeyIsPressed() {
+        openApp2sMenu()
+
+        // Down is pressed and released while Select, which opened the menu, is still held and repeating.
+        composeRule.onMenu().performKeyPress(
+            KeyEvent(
+                NativeKeyEvent(
+                    0,
+                    0,
+                    NativeKeyEvent.ACTION_DOWN,
+                    NativeKeyEvent.KEYCODE_DPAD_CENTER,
+                    2,
+                ),
+            ),
+        )
+        composeRule.onMenu().performKeyPress(
+            KeyEvent(NativeKeyEvent(NativeKeyEvent.ACTION_DOWN, NativeKeyEvent.KEYCODE_DPAD_DOWN)),
+        )
+        composeRule.onMenu().performKeyPress(
+            KeyEvent(NativeKeyEvent(NativeKeyEvent.ACTION_UP, NativeKeyEvent.KEYCODE_DPAD_DOWN)),
+        )
+        composeRule.onMenu().performKeyPress(
+            KeyEvent(NativeKeyEvent(NativeKeyEvent.ACTION_UP, NativeKeyEvent.KEYCODE_DPAD_CENTER)),
+        )
+
+        assertEquals(emptyList<InstalledApp>(), appSettingsOpened)
+        composeRule.onMenuEntry(appSettings).assertIsFocused()
+    }
+
+    @Test
     fun backClosesTheMenuWithFocusOnTheTile() {
         openApp2sMenu()
 

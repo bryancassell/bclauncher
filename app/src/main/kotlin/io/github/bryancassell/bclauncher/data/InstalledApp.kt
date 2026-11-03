@@ -13,7 +13,10 @@ data class InstalledApp(
     /** The image its tile shows, or null when the app has none and the tile shows [icon] (PRD.md, Design decisions). */
     val banner: Drawable?,
     val icon: Drawable,
-    /** Whether the app is part of the system image, which the user can't uninstall, even after updating it. */
+    /**
+     * Whether the app is part of the system image, so the user can't uninstall it. Once Play updates it, the system can
+     * still uninstall the updates.
+     */
     val isSystemApp: Boolean,
 ) {
     /** Opens the app in its own task, or brings that task to the front if the app is already running. */

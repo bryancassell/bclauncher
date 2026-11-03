@@ -35,15 +35,16 @@ internal enum class AppOption(@StringRes val label: Int) {
     ;
 
     /**
-     * Whether selecting the entry does anything for [app]. A system app's Uninstall is shown disabled (PRD.md, Design
-     * decisions).
+     * Whether selecting the entry does anything for [app]. A system app's Uninstall is shown disabled, so the user sees
+     * that it can't be uninstalled. That includes one Play has updated, whose updates the system could uninstall, since
+     * an entry named Uninstall shouldn't put back the factory version. Its App info screen offers that.
      */
     fun isEnabledFor(app: InstalledApp): Boolean = this != Uninstall || !app.isSystemApp
 }
 
 /**
- * [app]'s options, in a dialog over the grid with the app's name above them (PRD.md, Design decisions). Focus starts on
- * the first entry. Choosing one or pressing Back closes the dialog, and focus is still on the tile, since the grid's
+ * [app]'s options, in a dialog over the grid with the app's name above them. A dialog is its own window, so it keeps
+ * focus and handles Back. Focus starts on the first entry. Choosing one or pressing Back closes the dialog, and focus is still on the tile, since the grid's
  * window losing focus to the dialog's doesn't clear it.
  */
 @Composable
@@ -54,7 +55,7 @@ internal fun AppMenu(app: InstalledApp, onOptionClick: (AppOption) -> Unit, onDi
         Surface(
             modifier = Modifier
                 .width(320.dp)
-                .onPreviewKeyEvent(heldPress::ignores),
+                .onPreviewKeyEvent(heldPress::track),
             shape = MaterialTheme.shapes.medium,
             colors = SurfaceDefaults.colors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -85,17 +86,25 @@ internal fun AppMenu(app: InstalledApp, onOptionClick: (AppOption) -> Unit, onDi
 }
 
 /**
- * Ignores the rest of the press that opened the menu, until a key goes down afresh. The tile opens the menu on the
- * first repeat of Select, while it's still held, so the press's later repeats and its release reach the menu once it
- * has focus. tv-material's ListItem chooses itself on any release of Select, without checking that it saw the press
- * (handleDPadEnter in tv-material 1.1.0), so the release would choose Launch.
+ * Ignores the rest of any press that began before the menu opened. The tile opens the menu on the first repeat of
+ * Select, while it's still held, so the press's later repeats and its release reach the menu once it has focus.
+ * Compose passes on a release once its window has seen the key go down, even as a repeat, and tv-material's ListItem
+ * chooses itself on any release of Select, without checking that it saw the press (handleDPadEnter in tv-material
+ * 1.1.0). So the release would choose the focused entry. Keys are tracked one by one, since the user can press Down
+ * while still holding Select.
  */
 private class HeldPressFilter {
-    private var pressedHere = false
+    // The keys that went down while the menu had focus and haven't been released.
+    private val pressedHere = mutableSetOf<Int>()
 
-    fun ignores(event: KeyEvent): Boolean {
+    /** Notes which keys [event] presses or releases, and returns whether the menu should ignore it. */
+    fun track(event: KeyEvent): Boolean {
+        val key = event.nativeKeyEvent.keyCode
         val freshPress = event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0
-        if (freshPress) pressedHere = true
-        return !pressedHere
+        if (freshPress) pressedHere += key
+        return when (event.type) {
+            KeyEventType.KeyUp -> !pressedHere.remove(key)
+            else -> key !in pressedHere
+        }
     }
 }

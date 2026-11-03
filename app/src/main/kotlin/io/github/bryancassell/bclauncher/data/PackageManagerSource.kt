@@ -40,7 +40,7 @@ class PackageManagerSource @Inject constructor(@ApplicationContext private val c
                     // The activity's banner, else the application's, else null.
                     banner = activity.loadBanner(packageManager),
                     icon = resolveInfo.loadIcon(packageManager),
-                    // An updated system app has FLAG_UPDATED_SYSTEM_APP as well.
+                    // An updated system app keeps FLAG_SYSTEM and gets FLAG_UPDATED_SYSTEM_APP too.
                     isSystemApp =
                         activity.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0,
                 )
