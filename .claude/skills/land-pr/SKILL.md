@@ -1,6 +1,6 @@
 ---
 name: land-pr
-description: Make one PR for a GitHub issue, from a new branch to ready for the developer to merge. Implement it, open the PR, run two xhigh /code-review rounds that post their findings to the PR, then hand it to the developer once CI passes, asking the developer every question that needs their call. The developer gives it the final review and merges it.
+description: Make one PR for a GitHub issue, from a new branch to merged. Implement it, open the PR, run two xhigh /code-review rounds that post their findings to the PR, then squash-merge once CI passes, asking the developer every question that needs their call.
 argument-hint: <issue-number>
 disable-model-invocation: true
 ---
@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 The issue number, N below, is `$ARGUMENTS`. If that isn't a single issue number, ask for one. A leading `#` can be dropped without asking.
 
-Make one PR for issue #N, from a new branch to ready to merge, following CLAUDE.md's Git Development Workflow and Claude Code Behaviors. An issue can take more than one PR; this covers one. The developer gives the PR its final review and chooses when to merge it, so stop once it's ready.
+Make one PR for issue #N, from a new branch to merged, following CLAUDE.md's Git Development Workflow and Claude Code Behaviors. An issue can take more than one PR; this covers one. The merge at the end is automatic, so the questions you ask along the way are the developer's say in the change.
 
 ## When to ask
 
@@ -105,9 +105,12 @@ Do this twice. Round 2 reviews the PR with round 1's fixes pushed.
 3. `./gradlew build` passes, and the checks in step 2.6 are redone for anything the fixes changed. Commit and push.
 4. Edit the PR description in place. Add `## After the /code-review` (round 1) or `## After the second /code-review` (round 2), with lists headed "Fixed:", "Not changed, by agreement:" and "Not changed:", each item with its reason.
 
-## 5. Hand it to the developer
+## 5. Merge
 
-The developer gives the PR its final review and chooses when to merge it. Don't merge it, turn on auto-merge or delete its branch, even once CI passes.
-
-1. Wait for CI on the last push with `gh pr checks <PR number> --watch`. Fix a failure this change caused, and ask about one it didn't clearly cause.
-2. Tell the developer the PR is ready to review: its link, whether CI passed, and anything that deserves a close look, such as the findings under "Not changed:".
+1. Bring in `main`. The "Protect main" ruleset won't merge a PR that's behind it, and CI doesn't run while a PR conflicts with it. `git fetch origin`, and if `git merge-base --is-ancestor origin/main HEAD` fails, merge `origin/main` into the branch, run `./gradlew build` and push.
+2. Wait for CI in a background command, since it can take longer than a foreground command may run: `gh pr checks <PR number> --watch --interval 60 > /dev/null`. Then read the result with `gh pr checks <PR number>`. If a check fails, fix it and push. If Instrumented tests hangs or fails with no cause in this change, rerun it once with `gh run rerun --failed <run id>`, and ask if it fails again.
+3. Anything changed after round 2, such as a CI fix or a conflict resolved with `main`, goes in the PR description, since it becomes the commit message. If it changes production code beyond the trivial, ask whether to review again before merging.
+4. Before merging, check that both review rounds are done and every finding is fixed or listed with its reason. Every question has an answer, and nothing is left that the developer should decide. If something is, ask now.
+5. `gh pr merge <PR number> --squash --match-head-commit "$(git rev-parse HEAD)"`. It refuses if the PR's head isn't the local branch's, so no local commit is left out. If it refuses because `main` moved again, go back to step 5.1. GitHub deletes the remote branch.
+6. `git fetch --prune && git switch --detach origin/main && git branch -D <branch>`. Detach rather than switch to `main`, as in step 2.2. Use `-D`, since a squash merge isn't an ancestor of `main`. The merge in step 5.5 already checked the branch had nothing unpushed.
+7. Report the merged PR's URL, the questions asked with their answers, and what's left of the issue, if anything.

@@ -92,4 +92,4 @@ When something breaks, `app/build/outputs/mapping/release/usage.txt` lists the c
 
 `.github/workflows/doc-growth.yml` runs **Doc growth**, which fails when a PR gives ARCHITECTURE.md or PRD.md more words (`wc -w`) than `main` has, unless the PR has the `grows-docs` label. Adding or removing a label reruns it.
 
-A ruleset on `main` requires a PR and all three checks to pass, and blocks force pushes and deleting the branch. Nobody can bypass it. To merge past a CI failure that isn't the PR's fault, turn the ruleset off in Settings → Rules, then turn it back on.
+The "Protect main" ruleset requires a PR, all three checks to pass, and the PR to be up to date with `main`, so the checks have run on what `main` will have after the merge. It also blocks force pushes and deleting the branch. Nobody can bypass it. The repository settings and the ruleset allow only squash merges, and the ruleset requires a linear history. A squash merge takes the PR's title and description as its commit message, and GitHub then deletes the PR's branch. To merge past a CI failure that isn't the PR's fault, turn the ruleset off in Settings → Rules, then turn it back on.
