@@ -1,7 +1,11 @@
 package io.github.bryancassell.bclauncher
 
+import android.Manifest
+import android.accessibilityservice.AccessibilityService
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.FeatureInfo
 import android.content.pm.PackageManager
 import androidx.test.core.app.ApplicationProvider
@@ -49,6 +53,33 @@ class LauncherManifestTest {
                 PackageManager.FEATURE_TOUCHSCREEN to false,
             ),
             features,
+        )
+    }
+
+    @Test
+    fun homeReturnsToTheOneHomeScreen() {
+        val activity = context.packageManager.getActivityInfo(
+            ComponentName(context, MainActivity::class.java),
+            0,
+        )
+
+        assertEquals(ActivityInfo.LAUNCH_SINGLE_TASK, activity.launchMode)
+    }
+
+    @Test
+    fun homeButtonServiceIsAnAccessibilityServiceOnlyTheSystemCanBind() {
+        val intent = Intent(AccessibilityService.SERVICE_INTERFACE).setPackage(context.packageName)
+
+        val service = context.packageManager.queryIntentServices(
+            intent,
+            PackageManager.GET_META_DATA,
+        ).single()
+
+        assertEquals(HomeButtonService::class.java.name, service.serviceInfo.name)
+        assertEquals(Manifest.permission.BIND_ACCESSIBILITY_SERVICE, service.serviceInfo.permission)
+        assertEquals(
+            R.xml.home_button_service,
+            service.serviceInfo.metaData.getInt(AccessibilityService.SERVICE_META_DATA),
         )
     }
 }

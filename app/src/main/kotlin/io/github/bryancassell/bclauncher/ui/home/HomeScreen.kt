@@ -61,12 +61,14 @@ private const val TAG = "HomeScreen"
 @Composable
 fun HomeScreen(modifier: Modifier = Modifier, viewModel: HomeViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val showsHomeButtonMessage by viewModel.showsHomeButtonMessage.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val resources = LocalResources.current
     // Back does nothing (PRD.md, Design decisions).
     BackHandler {}
     HomeScreen(
         uiState = uiState,
+        showsHomeButtonMessage = showsHomeButtonMessage,
         // The screen starts the app itself, with the activity's context (ARCHITECTURE.md, Layers and packages).
         onAppClick = { app ->
             if (!context.startActivitySafely(app.launchIntent)) {
@@ -76,6 +78,15 @@ fun HomeScreen(modifier: Modifier = Modifier, viewModel: HomeViewModel = hiltVie
             }
         },
         onRetry = viewModel::retry,
+        onUseBcLauncher = {
+            if (!context.startActivitySafely(viewModel.homeButtonSettingsIntent)) {
+                Toast.makeText(
+                    context,
+                    R.string.home_button_settings_did_not_open,
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        },
         modifier = modifier,
     )
 }
@@ -96,20 +107,61 @@ internal fun Context.startActivitySafely(intent: Intent): Boolean = try {
     false
 }
 
-/** Shows nothing while the apps load, since a load takes a fraction of a second and an indicator would only flash. */
+/**
+ * Shows nothing while the apps load, since a load takes a fraction of a second and an indicator would only flash. The
+ * message offering to make Home open BC Launcher goes above the apps (PRD.md, Design decisions).
+ */
 @Composable
 internal fun HomeScreen(
     uiState: HomeUiState,
+    showsHomeButtonMessage: Boolean,
     onAppClick: (InstalledApp) -> Unit,
     onRetry: () -> Unit,
+    onUseBcLauncher: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(modifier = modifier.fillMaxSize()) {
-        when (uiState) {
-            HomeUiState.Loading -> Unit
-            is HomeUiState.Content -> AppGrid(uiState.apps, onAppClick)
-            HomeUiState.Empty -> Message(stringResource(R.string.home_empty))
-            HomeUiState.Error -> LoadError(onRetry)
+        Column {
+            if (showsHomeButtonMessage) HomeButtonMessage(onUseBcLauncher)
+            Box(modifier = Modifier.weight(1f)) {
+                when (uiState) {
+                    HomeUiState.Loading -> Unit
+
+                    is HomeUiState.Content -> AppGrid(
+                        uiState.apps,
+                        onAppClick,
+                        showsHomeButtonMessage,
+                    )
+
+                    HomeUiState.Empty -> Message(stringResource(R.string.home_empty))
+
+                    HomeUiState.Error -> LoadError(onRetry, showsHomeButtonMessage)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Says that Home opens Google TV, with a button that opens Accessibility settings, inside the grid's side margins.
+ * Focus starts on the apps, so Select still opens one, and Up from the first row reaches the button.
+ */
+@Composable
+private fun HomeButtonMessage(onUseBcLauncher: () -> Unit) {
+    Column(
+        modifier = Modifier.padding(start = 58.dp, top = 28.dp, end = 58.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.home_button_message),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            text = stringResource(R.string.home_button_message_detail),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Button(onClick = onUseBcLauncher) {
+            Text(text = stringResource(R.string.home_button_use))
         }
     }
 }
@@ -120,14 +172,21 @@ internal fun HomeScreen(
  *
  * Focus starts on the first tile. Starting another app leaves focus where it was, since the window losing focus
  * doesn't clear it. The focused tile is also saved each time focus moves, so focus returns to it after the activity
- * is recreated, such as for a configuration change or when its process was stopped to free memory.
+ * is recreated, such as for a configuration change or when its process was stopped to free memory. Focus also
+ * returns to it each time the message above the grid comes or goes: when the user turns on the service and comes back,
+ * the message leaves with focus on its button, and Compose clears focus and moves it nowhere, so Select would do
+ * nothing.
  *
  * Saving once before an app starts isn't enough: saveFocusedChild() saves the tile focused when it's called, and the
  * restore after a recreation doesn't save it again (Compose UI 1.12.1's FocusRestorer.kt). So a tile reached with the
  * D-pad since then, or anything after a second recreation, went back to the first tile on the Google TV emulator.
  */
 @Composable
-private fun AppGrid(apps: List<InstalledApp>, onAppClick: (InstalledApp) -> Unit) {
+private fun AppGrid(
+    apps: List<InstalledApp>,
+    onAppClick: (InstalledApp) -> Unit,
+    messageShown: Boolean,
+) {
     val grid = remember { FocusRequester() }
     val focus = remember { GridFocus() }
     // When the focused tile's app leaves the list, as after onLaunchFailed() reloads it, focus goes to the tile that
@@ -168,7 +227,7 @@ private fun AppGrid(apps: List<InstalledApp>, onAppClick: (InstalledApp) -> Unit
     // restoreFocusedChild() first, because requestFocus() on the grid focuses its first tile even when focusRestorer
     // restores another one on the way in: the restore runs inside the request, which then carries on (Compose UI
     // 1.12.1's FocusTargetNode.requestFocus).
-    LaunchedEffect(Unit) {
+    LaunchedEffect(messageShown) {
         if (!grid.restoreFocusedChild()) grid.requestFocus()
     }
 }
@@ -241,9 +300,12 @@ private fun Message(text: String) {
     }
 }
 
-/** Says the apps didn't load, with a Try again button that takes focus, so Select presses it. */
+/**
+ * Says the apps didn't load, with a Try again button that takes focus, so Select presses it. It takes focus again each
+ * time the message above comes or goes, for the reason AppGrid gives.
+ */
 @Composable
-private fun LoadError(onRetry: () -> Unit) {
+private fun LoadError(onRetry: () -> Unit, messageShown: Boolean) {
     val retry = remember { FocusRequester() }
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -258,7 +320,7 @@ private fun LoadError(onRetry: () -> Unit) {
             Text(text = stringResource(R.string.home_retry))
         }
     }
-    LaunchedEffect(Unit) { retry.requestFocus() }
+    LaunchedEffect(messageShown) { retry.requestFocus() }
 }
 
 /**

@@ -5,4 +5,11 @@
     <string name="home_retry">Try again</string>
     <!-- Shown when selecting an app's tile doesn't open it. %1$s is the app's name. -->
     <string name="app_did_not_open">Couldn\'t open %1$s</string>
+    <!-- Shown above the apps until the user turns on BC Launcher's accessibility service. -->
+    <string name="home_button_message">Pressing Home opens Google TV</string>
+    <string name="home_button_message_detail">To have it open BC Launcher, select BC Launcher in Accessibility settings and turn it on. BC Launcher sees which buttons you press on the remote, and acts only on Home.</string>
+    <string name="home_button_use">Use BC Launcher</string>
+    <string name="home_button_settings_did_not_open">Couldn\'t open Accessibility settings</string>
+    <!-- Shown for BC Launcher's service in Accessibility settings. -->
+    <string name="home_button_service_description">Opens BC Launcher when you press Home. Holding Home still opens Google TV\'s panel. BC Launcher sees which buttons you press on the remote, and acts only on Home.</string>
 </resources>

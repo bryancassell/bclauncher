@@ -33,7 +33,13 @@ private fun HomeScreenPreview() {
         icon = icon,
     )
     BcLauncherTheme {
-        HomeScreen(uiState = HomeUiState.Content(apps), onAppClick = {}, onRetry = {})
+        HomeScreen(
+            uiState = HomeUiState.Content(apps),
+            showsHomeButtonMessage = true,
+            onAppClick = {},
+            onRetry = {},
+            onUseBcLauncher = {},
+        )
     }
 }
 
@@ -41,6 +47,12 @@ private fun HomeScreenPreview() {
 @Composable
 private fun EmptyHomeScreenPreview() {
     BcLauncherTheme {
-        HomeScreen(uiState = HomeUiState.Empty, onAppClick = {}, onRetry = {})
+        HomeScreen(
+            uiState = HomeUiState.Empty,
+            showsHomeButtonMessage = false,
+            onAppClick = {},
+            onRetry = {},
+            onUseBcLauncher = {},
+        )
     }
 }

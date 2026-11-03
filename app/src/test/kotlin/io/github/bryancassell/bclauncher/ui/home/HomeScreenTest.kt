@@ -51,20 +51,31 @@ class HomeScreenTest {
 
     private val clicked = mutableListOf<InstalledApp>()
     private var retries = 0
+    private var homeButtonSettingsOpened = 0
 
-    // A test changes what the screen shows by setting this after showScreen.
+    // A test changes what the screen shows by setting these after showScreen.
     private var uiState by mutableStateOf<HomeUiState>(HomeUiState.Loading)
+    private var showsHomeButtonMessage by mutableStateOf(false)
 
-    private fun showScreen(initial: HomeUiState) {
+    private fun showScreen(initial: HomeUiState, homeButtonMessage: Boolean = false) {
         uiState = initial
+        showsHomeButtonMessage = homeButtonMessage
         composeRule.setContent {
             BcLauncherTheme {
-                HomeScreen(uiState = uiState, onAppClick = {
-                    clicked += it
-                }, onRetry = { retries++ })
+                HomeScreen(
+                    uiState = uiState,
+                    showsHomeButtonMessage = showsHomeButtonMessage,
+                    onAppClick = { clicked += it },
+                    onRetry = { retries++ },
+                    onUseBcLauncher = { homeButtonSettingsOpened++ },
+                )
             }
         }
     }
+
+    private fun onUseBcLauncher() = composeRule.onNode(
+        hasText(context.getString(R.string.home_button_use)) and hasClickAction(),
+    )
 
     // Apps with banners, named App 1 to App [count].
     private fun bannerApps(count: Int) =
@@ -192,5 +203,82 @@ class HomeScreenTest {
         uiState = HomeUiState.Content(apps - apps[0] - apps[3])
 
         composeRule.onTile("App 5").assertIsFocused()
+    }
+
+    @Test
+    fun showsTheHomeButtonMessageAboveTheApps() {
+        showScreen(HomeUiState.Content(bannerApps(3)), homeButtonMessage = true)
+
+        composeRule.onNodeWithText(
+            context.getString(R.string.home_button_message),
+        ).assertIsDisplayed()
+        onUseBcLauncher().assertIsDisplayed()
+        composeRule.onTile("App 1").assertIsDisplayed()
+    }
+
+    @Test
+    fun noHomeButtonMessageOnceHomeOpensBcLauncher() {
+        showScreen(HomeUiState.Content(bannerApps(3)))
+
+        composeRule.onAllNodesWithText(
+            context.getString(R.string.home_button_message),
+        ).assertCountEquals(0)
+        onUseBcLauncher().assertDoesNotExist()
+    }
+
+    @Test
+    fun focusStartsOnTheFirstAppBelowTheHomeButtonMessage() {
+        showScreen(HomeUiState.Content(bannerApps(3)), homeButtonMessage = true)
+
+        composeRule.onTile("App 1").assertIsFocused()
+    }
+
+    @Test
+    fun upFromTheFirstRowReachesUseBcLauncher() {
+        showScreen(HomeUiState.Content(bannerApps(8)), homeButtonMessage = true)
+
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionRight, Key.DirectionUp))
+        onUseBcLauncher().assertIsFocused()
+
+        composeRule.pressKeys(listOf(Key.DirectionCenter))
+        assertEquals(1, homeButtonSettingsOpened)
+        assertEquals(emptyList<InstalledApp>(), clicked)
+    }
+
+    @Test
+    fun focusReturnsToItsTileWhenTheHomeButtonMessageLeaves() {
+        val apps = bannerApps(8)
+        showScreen(HomeUiState.Content(apps), homeButtonMessage = true)
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionUp))
+
+        // The user turned on the service in Accessibility settings and came back.
+        showsHomeButtonMessage = false
+
+        composeRule.onTile("App 2").assertIsFocused()
+        composeRule.pressKeys(listOf(Key.DirectionCenter))
+        assertEquals(listOf(apps[1]), clicked)
+    }
+
+    @Test
+    fun focusStaysOnItsTileWhenTheHomeButtonMessageArrives() {
+        showScreen(HomeUiState.Content(bannerApps(8)))
+        composeRule.pressKeys(listOf(Key.DirectionDown))
+
+        showsHomeButtonMessage = true
+
+        composeRule.onTile("App 7").assertIsFocused()
+    }
+
+    @Test
+    fun focusReturnsToTryAgainWhenTheHomeButtonMessageLeaves() {
+        showScreen(HomeUiState.Error, homeButtonMessage = true)
+        composeRule.pressKeys(listOf(Key.DirectionUp))
+        onUseBcLauncher().assertIsFocused()
+
+        showsHomeButtonMessage = false
+
+        composeRule.onNode(
+            hasText(context.getString(R.string.home_retry)) and hasClickAction(),
+        ).assertIsFocused()
     }
 }
