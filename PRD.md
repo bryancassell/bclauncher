@@ -9,8 +9,7 @@ This project is a minimal replacement home screen for Google TV devices that foc
   - Reordering app order on the home screen
   - Launching the app
   - Uninstalling the app
-  - Force stopping the app
-  - Launching into the app settings
+  - Launching into the app settings, including Force stop
 - The home screen will include an option to launch into the official Google TV home screen
 - The home screen will include an option to launch into device settings
 - The home screen will not override the official launcher's support for bringing up an overlay when the user long presses the home button
@@ -30,3 +29,4 @@ This project is a minimal replacement home screen for Google TV devices that foc
 | Home opens BC Launcher once the user turns on its accessibility service, and still turns the TV on and switches it to the Streamer. Holding Home still opens Google TV's panel. | Google TV doesn't let another app be the Home app, and Google TV's own Home button switches the TV to it. | #10 |
 | After the TV restarts, BC Launcher opens in place of Google TV's home, unless another app is in front by then. | Android starts its own Home app, Google TV, at every start, but a TV can start in an HDMI input or Live TV. | #10 |
 | While Home opens Google TV, a message above the apps offers to change that and opens Accessibility settings, where the service is turned off too. | Every user should see it once, and Accessibility settings is where any service is turned off. | #10 |
+| An app's options have no Force stop entry. App settings opens the app's App info screen, which has Force stop. | Only a system app can force stop another app, so the entry could only open App info too. | #9 |
