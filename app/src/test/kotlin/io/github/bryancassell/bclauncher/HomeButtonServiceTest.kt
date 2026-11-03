@@ -32,6 +32,9 @@ class HomeButtonServiceTest {
 
     private val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
 
+    // How long after handing Home to Android BC Launcher opens.
+    private val handOffDelay = 100L
+
     private val googleTvHome = ComponentName(
         "com.google.android.apps.tv.launcherx",
         "com.google.android.apps.tv.launcherx.home.HomeActivity",
@@ -47,6 +50,11 @@ class HomeButtonServiceTest {
     private fun sendCancelledUp(): Boolean {
         val up = KeyEvent(0, 0, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_HOME, 0)
         return service.onKeyEvent(KeyEvent.changeFlags(up, KeyEvent.FLAG_CANCELED))
+    }
+
+    private fun pressHome() {
+        send(KeyEvent.ACTION_DOWN)
+        send(KeyEvent.ACTION_UP)
     }
 
     private val startedActivity: Intent? get() = shadowOf(application).nextStartedActivity
@@ -70,32 +78,65 @@ class HomeButtonServiceTest {
         }
     }
 
+    private fun setInFront(packageName: String) {
+        @Suppress("DEPRECATION")
+        val root = AccessibilityNodeInfo.obtain().apply { this.packageName = packageName }
+        shadowOf(service).setRootInActiveWindow(root)
+    }
+
     // The window in front as the service connects, or none.
     private fun connectWithInFront(packageName: String?) {
-        if (packageName != null) {
-            @Suppress("DEPRECATION")
-            val root = AccessibilityNodeInfo.obtain().apply { this.packageName = packageName }
-            shadowOf(service).setRootInActiveWindow(root)
-        }
+        if (packageName != null) setInFront(packageName)
         service.onServiceConnected()
     }
 
-    private fun windowComesToTheFront(packageName: String) {
+    // As the system does when the screensaver starts or stops. Sent from the service, so it's running to receive it.
+    private fun screensaver(action: String) {
+        service.sendBroadcast(Intent(action))
+        idleFor(0)
+    }
+
+    private fun windowEventFrom(packageName: String, className: String? = null) {
         @Suppress("DEPRECATION")
         val event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
         event.packageName = packageName
+        event.className = className
         service.onAccessibilityEvent(event)
     }
 
+    private fun windowComesToTheFront(packageName: String, className: String? = null) {
+        setInFront(packageName)
+        windowEventFrom(packageName, className)
+    }
+
+    private fun googleTvsHomeComesToTheFront() {
+        windowComesToTheFront(googleTvHome.packageName, googleTvHome.className)
+    }
+
+    // The service connected with BC Launcher in front, then the user pressed Home and BC Launcher opened.
+    private fun handOffWithGoogleTvHome() {
+        installGoogleTvHome()
+        connectWithInFront(application.packageName)
+        pressHome()
+        idleFor(handOffDelay)
+        assertOpenedBcLauncher(startedActivity)
+    }
+
     @Test
-    fun pressingHomeOpensBcLauncher() {
+    fun pressingHomeHandsItToAndroidThenOpensBcLauncher() {
         assertTrue(send(KeyEvent.ACTION_DOWN))
         idleFor(longPressTimeout - 1)
         assertTrue(send(KeyEvent.ACTION_UP))
 
+        // Android turns the TV on, switches its input and starts Google TV's home.
+        assertEquals(listOf(AccessibilityService.GLOBAL_ACTION_HOME), globalActions)
+        idleFor(handOffDelay - 1)
+        assertNull(startedActivity)
+
+        idleFor(1)
         assertOpenedBcLauncher(startedActivity)
         idleFor(longPressTimeout)
-        assertEquals(emptyList<Int>(), globalActions)
+        assertEquals(listOf(AccessibilityService.GLOBAL_ACTION_HOME), globalActions)
     }
 
     @Test
@@ -106,7 +147,9 @@ class HomeButtonServiceTest {
         assertEquals(listOf(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS), globalActions)
 
         send(KeyEvent.ACTION_UP)
+        idleFor(handOffDelay)
         assertNull(startedActivity)
+        assertEquals(listOf(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS), globalActions)
     }
 
     @Test
@@ -115,15 +158,21 @@ class HomeButtonServiceTest {
         idleFor(longPressTimeout)
         send(KeyEvent.ACTION_UP)
 
-        send(KeyEvent.ACTION_DOWN)
-        send(KeyEvent.ACTION_UP)
+        pressHome()
+        idleFor(handOffDelay)
 
         assertOpenedBcLauncher(startedActivity)
-        assertEquals(listOf(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS), globalActions)
+        assertEquals(
+            listOf(
+                AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS,
+                AccessibilityService.GLOBAL_ACTION_HOME,
+            ),
+            globalActions,
+        )
     }
 
     @Test
-    fun aCancelledPressOpensNothing() {
+    fun aCancelledPressDoesNothing() {
         send(KeyEvent.ACTION_DOWN)
 
         // As when the remote disconnects while Home is held.
@@ -155,6 +204,7 @@ class HomeButtonServiceTest {
         assertFalse(send(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK))
 
         assertNull(startedActivity)
+        assertEquals(emptyList<Int>(), globalActions)
     }
 
     @Test
@@ -165,6 +215,70 @@ class HomeButtonServiceTest {
         idleFor(longPressTimeout)
 
         assertEquals(emptyList<Int>(), globalActions)
+    }
+
+    @Test
+    fun turningTheServiceOffRightAfterAHandOffOpensNothing() {
+        pressHome()
+
+        controller.destroy()
+        idleFor(handOffDelay)
+
+        assertNull(startedActivity)
+    }
+
+    @Test
+    fun bcLauncherOpensAgainWhenGoogleTvsHomeEndsUpInFrontAfterAHandOff() {
+        handOffWithGoogleTvHome()
+
+        // As on a TV where Google TV's home starts later than BC Launcher.
+        googleTvsHomeComesToTheFront()
+
+        assertOpenedBcLauncher(startedActivity)
+    }
+
+    @Test
+    fun googleTvsPanelAfterAHandOffOpensNothing() {
+        handOffWithGoogleTvHome()
+
+        // Google TV's panel is in the same package as its home.
+        windowComesToTheFront(
+            googleTvHome.packageName,
+            "com.google.android.apps.tv.launcherx.dashboard.DashboardActivity",
+        )
+
+        assertNull(startedActivity)
+    }
+
+    @Test
+    fun theNextPressEndsTheWaitForGoogleTvsHome() {
+        handOffWithGoogleTvHome()
+
+        send(KeyEvent.ACTION_DOWN)
+        googleTvsHomeComesToTheFront()
+
+        assertNull(startedActivity)
+    }
+
+    @Test
+    fun googleTvsHomeBehindBcLauncherAfterAHandOffOpensNothing() {
+        handOffWithGoogleTvHome()
+
+        // Google TV's home sends window events while BC Launcher covers it.
+        windowEventFrom(googleTvHome.packageName, googleTvHome.className)
+
+        assertNull(startedActivity)
+    }
+
+    @Test
+    fun googleTvsHomeLongAfterAHandOffOpensNothing() {
+        handOffWithGoogleTvHome()
+        idleFor(1_500)
+
+        // The user opens Google TV's home, as from an entry for it.
+        googleTvsHomeComesToTheFront()
+
+        assertNull(startedActivity)
     }
 
     @Test
@@ -217,13 +331,47 @@ class HomeButtonServiceTest {
     }
 
     @Test
-    fun windowsAfterTheFirstOneOpenNothing() {
-        installGoogleTvHome()
-        connectWithInFront("com.google.android.youtube.tv")
+    fun homeClosesTheScreensaverAndOpensBcLauncher() {
+        screensaver(Intent.ACTION_DREAMING_STARTED)
 
-        // The user goes back to Google TV's home later, as from an entry for it.
-        windowComesToTheFront(googleTvHome.packageName)
+        pressHome()
+        idleFor(handOffDelay)
 
-        assertNull(startedActivity)
+        assertEquals(
+            listOf(
+                AccessibilityService.GLOBAL_ACTION_BACK,
+                AccessibilityService.GLOBAL_ACTION_HOME,
+            ),
+            globalActions,
+        )
+        assertOpenedBcLauncher(startedActivity)
+    }
+
+    @Test
+    fun holdingHomeClosesTheScreensaverAndOpensGoogleTvsPanel() {
+        screensaver(Intent.ACTION_DREAMING_STARTED)
+
+        send(KeyEvent.ACTION_DOWN)
+        idleFor(longPressTimeout)
+
+        assertEquals(
+            listOf(
+                AccessibilityService.GLOBAL_ACTION_BACK,
+                AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS,
+            ),
+            globalActions,
+        )
+    }
+
+    @Test
+    fun homeSendsNoBackOnceTheScreensaverHasClosed() {
+        screensaver(Intent.ACTION_DREAMING_STARTED)
+        screensaver(Intent.ACTION_DREAMING_STOPPED)
+
+        pressHome()
+        idleFor(handOffDelay)
+
+        assertEquals(listOf(AccessibilityService.GLOBAL_ACTION_HOME), globalActions)
+        assertOpenedBcLauncher(startedActivity)
     }
 }
