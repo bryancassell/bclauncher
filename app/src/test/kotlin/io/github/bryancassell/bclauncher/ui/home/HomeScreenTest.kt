@@ -21,6 +21,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -61,6 +62,9 @@ class HomeScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
 
+    // Sets the screen's content, and recreates it with its saved state as an activity recreation does.
+    private val restoration = StateRestorationTester(composeRule)
+
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     private val clicked = mutableListOf<InstalledApp>()
@@ -83,7 +87,7 @@ class HomeScreenTest {
         uiState = initial
         showsHomeButtonMessage = homeButtonMessage
         showsGoogleTv = googleTv
-        composeRule.setContent {
+        restoration.setContent {
             BcLauncherTheme {
                 CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
                     HomeScreen(
@@ -118,6 +122,12 @@ class HomeScreenTest {
     // Apps with banners, named App 1 to App [count], or with another [name].
     private fun bannerApps(count: Int, name: String = "App") =
         (1..count).map { fakeApp("$name $it").copy(banner = ColorDrawable()) }
+
+    // Twin Aa and Twin BB, whose components have the same hashCode(), since "Aa" and "BB" do. So their tiles' nodes get
+    // the same compositeKeyHash, as two tiles' nodes do on a TV once the grid reuses one app's node for another (#28).
+    private fun appsWithTheSameHash() = listOf("Aa", "BB").map {
+        fakeApp("Twin $it", packageName = "com.example.$it")
+    }.also { (aa, bb) -> assertEquals(aa.component.hashCode(), bb.component.hashCode()) }
 
     // Scrolls the grid to a focused tile as a TV does, which puts its row 30% of the way down. Compose Foundation picks
     // that for a device with FEATURE_LEANBACK, and Robolectric's TV qualifiers don't add the feature.
@@ -424,6 +434,34 @@ class HomeScreenTest {
     }
 
     @Test
+    fun downFromUseBcLauncherReturnsToTheTileFocusLeft() {
+        val (aa, bb) = appsWithTheSameHash()
+        // Twin BB's tile is below the button and comes first, so it's the first with the same hash too.
+        showScreen(HomeUiState.Content(listOf(bb, aa) + bannerApps(4)), homeButtonMessage = true)
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionUp))
+        onUseBcLauncher().assertIsFocused()
+
+        composeRule.pressKeys(listOf(Key.DirectionDown))
+
+        composeRule.onTile("Twin Aa").assertIsFocused()
+    }
+
+    @Test
+    fun downFromUseBcLauncherReachesTheFirstRowOnceTheTileFocusLeftHasGone() {
+        val (aa, bb) = appsWithTheSameHash()
+        // Twin Aa is second in the first row, and Twin BB starts the fourth.
+        val apps = bannerApps(1) + aa + bannerApps(16, "More") + bb
+        showScreen(HomeUiState.Content(apps), homeButtonMessage = true)
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionUp))
+        onUseBcLauncher().assertIsFocused()
+        uiState = HomeUiState.Content(apps - aa)
+
+        composeRule.pressKeys(listOf(Key.DirectionDown))
+
+        composeRule.onTile("App 1").assertIsFocused()
+    }
+
+    @Test
     fun focusReturnsToItsTileWhenTheHomeButtonMessageLeaves() {
         val apps = bannerApps(8)
         showScreen(HomeUiState.Content(apps), homeButtonMessage = true)
@@ -435,6 +473,44 @@ class HomeScreenTest {
         composeRule.onTile("App 2").assertIsFocused()
         composeRule.pressKeys(listOf(Key.DirectionCenter))
         assertEquals(listOf(apps[1]), clicked)
+    }
+
+    @Test
+    fun aTileTakesFocusWhenTheHomeButtonMessageLeavesAsTheTileFocusLeftGoes() {
+        val apps = bannerApps(8)
+        showScreen(HomeUiState.Content(apps), homeButtonMessage = true)
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionUp))
+        onUseBcLauncher().assertIsFocused()
+
+        // App 2's tile last had focus. It leaves in the same frame as the message.
+        uiState = HomeUiState.Content(apps - apps[1])
+        showsHomeButtonMessage = false
+
+        composeRule.onTile("App 1").assertIsFocused()
+    }
+
+    @Test
+    fun focusReturnsToItsTileAfterTheScreenIsRecreatedBesideATileWithTheSameHash() {
+        val (aa, bb) = appsWithTheSameHash()
+        showScreen(HomeUiState.Content(listOf(bb, aa)))
+        composeRule.pressKeys(listOf(Key.DirectionRight))
+        composeRule.onTile("Twin Aa").assertIsFocused()
+
+        restoration.emulateSavedInstanceStateRestore()
+
+        composeRule.onTile("Twin Aa").assertIsFocused()
+    }
+
+    @Test
+    fun focusReturnsToItsTileWhenTheHomeButtonMessageLeavesBesideATileWithTheSameHash() {
+        val (aa, bb) = appsWithTheSameHash()
+        showScreen(HomeUiState.Content(listOf(bb, aa)), homeButtonMessage = true)
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionUp))
+        onUseBcLauncher().assertIsFocused()
+
+        showsHomeButtonMessage = false
+
+        composeRule.onTile("Twin Aa").assertIsFocused()
     }
 
     @Test
