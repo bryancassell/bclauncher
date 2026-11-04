@@ -87,7 +87,7 @@ When something breaks, `app/build/outputs/mapping/release/usage.txt` lists the c
 
 Auto Backup saves BC Launcher's DataStore files (ARCHITECTURE.md, Stored data). After changing the backup rules or where data is stored, check on the Google TV emulator that a reinstall brings the data back. The local transport keeps the backup on the emulator, so no Google account is needed.
 
-1. Install the debug build and give BC Launcher some data. To write the order of the apps by hand, list their components with `adb shell pm query-activities --components -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER`, then run the following and force-stop BC Launcher, since DataStore keeps what it last read:
+1. Install the debug build and give BC Launcher some data. To write the order of the apps by hand, list their components with `adb shell pm query-activities --components -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER`. Write each class name in full, as `ComponentName.flattenToString()` does: `com.android.tv/.TvActivity` is `com.android.tv/com.android.tv.TvActivity`. Then run the following and force-stop BC Launcher, since DataStore keeps what it last read:
    ```
    echo '{"components":["<component>","<component>"]}' |
      adb shell "run-as io.github.bryancassell.bclauncher sh -c 'mkdir -p files/datastore && cat > files/datastore/app_order.json'"
