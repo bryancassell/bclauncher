@@ -79,7 +79,7 @@ R8 removes and renames code that nothing seems to call, so code that's reached o
 1. Clear the log with `adb logcat -b all -c`, so it shows only this check.
 2. Install a signed release on the Google TV emulator, as above. A throwaway keystore is fine for this, with both values set for it in the environment.
 3. Open BC Launcher from the TV's app list, and use what the change touched.
-4. `adb logcat -d -b main,crash | grep -E -A2 'FATAL EXCEPTION|ClassNotFound|NoSuchMethod|NoSuchField| E DataModule'` shows nothing from `io.github.bryancassell.bclauncher`. It finds errors the app caught and logged as well as crashes, and the lines after each match name its process. `DataModule` logs an error when a stored file can't be parsed, as when R8 breaks its serializer. The grep looks for the tag, since R8 renames the exception's class.
+4. `adb logcat -d -b main,crash | grep -E -A2 'FATAL EXCEPTION|ClassNotFound|NoSuchMethod|NoSuchField| E DataModule'` shows nothing from `io.github.bryancassell.bclauncher`. It finds errors the app caught and logged as well as crashes. The lines after a crash name its process, and a logged error's PID shows whose it is. `DataModule` logs an error when a stored file can't be parsed, as when R8 breaks its serializer. The grep looks for the tag, since R8 renames the exception's class.
 
 When something breaks, `app/build/outputs/mapping/release/usage.txt` lists the code R8 removed, and `retrace` in the SDK's `cmdline-tools` turns a renamed stack trace back into source names using `mapping.txt` from the same build. Keep rules go in `app/src/main/keepRules/*.keep`, each with a comment saying what needs it.
 
@@ -115,14 +115,15 @@ A restore only goes to an app signed with the same key as the backup. To check t
    adb shell settings put secure backup_manager_constants full_backup_interval_milliseconds=60000
    adb shell setprop log.tag.BackupManagerService VERBOSE
    ```
-2. `adb shell dumpsys jobscheduler | grep FullBackupJob` shows the nightly job as `JOB #1000/<id>`. Each run backs up only the first package in `dumpsys backup`'s `Full backup queue`, so run it until BC Launcher is next:
+2. `adb shell dumpsys jobscheduler | grep FullBackupJob` shows the nightly job as `JOB #1000/<id>`. Each run takes the packages in `dumpsys backup`'s `Full backup queue` in turn and passes over busy ones, so run it until it has reached BC Launcher, which can take over a hundred runs:
    ```
-   until adb shell dumpsys backup | sed -n '/^Full backup queue/{n;p;}' | grep -q bclauncher; do
+   adb logcat -b all -c
+   until adb logcat -d | grep -qE 'doFullBackup\(\) on io.github.bryancassell.bclauncher|bclauncher is busy'; do
      adb shell cmd jobscheduler run -f android <id>; sleep 3
    done
    ```
-3. Clear the log with `adb logcat -b all -c` and run the job once more. After 30 seconds, `adb logcat -d | grep -E 'BackupManagerService|PFTBT'` shows `Calling doFullBackup() on io.github.bryancassell.bclauncher`, not `io.github.bryancassell.bclauncher is busy; deferring`.
-4. Put the settings back with `adb shell settings delete secure backup_manager_constants`, `adb shell settings delete secure enabled_accessibility_services` and `adb shell settings put secure accessibility_enabled 0`.
+3. `adb logcat -d | grep -E 'BackupManagerService|PFTBT'` shows `Calling doFullBackup() on io.github.bryancassell.bclauncher`, not `io.github.bryancassell.bclauncher is busy; deferring`. A forced run doesn't wait for the TV to be idle, so with BC Launcher on screen, the backup closes it.
+4. Put the settings back with `adb shell settings delete secure backup_manager_constants`, `adb shell settings delete secure enabled_accessibility_services`, `adb shell settings put secure accessibility_enabled 0` and `adb shell setprop log.tag.BackupManagerService ''`.
 
 ## CI
 

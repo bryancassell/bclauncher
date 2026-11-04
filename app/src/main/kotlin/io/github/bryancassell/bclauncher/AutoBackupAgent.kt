@@ -17,6 +17,10 @@ import android.os.ParcelFileDescriptor
  * methods below are never called. A key-value agent with FileBackupHelper would avoid shutting the app down, but every
  * save would have to call BackupManager.dataChanged(). Each backup shuts down the main process, where the agent runs,
  * but not :home_button, so the Home button keeps working.
+ *
+ * The nightly backup starts only once JobScheduler counts the device as idle, which takes the screen off for a while,
+ * so the home screen isn't showing then. A backup forced with the home screen showing removed it, and Google TV's home
+ * took its place until Home was pressed.
  */
 class AutoBackupAgent : BackupAgent() {
     override fun onBackup(
