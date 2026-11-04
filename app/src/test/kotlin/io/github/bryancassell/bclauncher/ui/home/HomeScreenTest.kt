@@ -288,7 +288,7 @@ class HomeScreenTest {
     }
 
     @Test
-    fun aListOfTheSameAppsDoesNotStopTheGridScrollingToTheFocusedTile() {
+    fun aReloadDoesNotStopTheGridScrollingToTheFocusedTile() {
         scrollAsATvDoes()
         val apps = bannerApps(48)
         showScreen(HomeUiState.Content(apps))
@@ -297,15 +297,42 @@ class HomeScreenTest {
         val top = composeRule.onTile("App 25").getUnclippedBoundsInRoot().top
         composeRule.pressKeys(listOf(Key.DirectionUp))
 
-        // The grid starts scrolling App 25 into view again, and the same apps arrive again, as they do each time the
-        // user returns more than 5 s after leaving.
+        // The grid starts scrolling App 25 into view again, and two rows of apps are installed before it.
         composeRule.mainClock.autoAdvance = false
         composeRule.pressKeys(listOf(Key.DirectionDown))
         composeRule.mainClock.advanceTimeByFrame()
-        uiState = HomeUiState.Content(apps.map { it.copy(banner = ColorDrawable()) })
+        uiState = HomeUiState.Content(apps.take(1) + bannerApps(12, name = "New") + apps.drop(1))
         composeRule.mainClock.autoAdvance = true
 
         composeRule.onTile("App 25").assertIsFocused().assertTopPositionInRootIsEqualTo(top)
+    }
+
+    @Test
+    fun aTileCanTakeTheRemovedTilesPlaceTwice() {
+        val apps = bannerApps(6)
+        showScreen(HomeUiState.Content(apps))
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionRight))
+        uiState = HomeUiState.Content(apps - apps[2])
+        composeRule.onTile("App 4").assertIsFocused()
+
+        // The next reload drops App 2, the tile the user moved to, and App 4 takes its place too.
+        composeRule.pressKeys(listOf(Key.DirectionLeft))
+        uiState = HomeUiState.Content(apps - apps[2] - apps[1])
+
+        composeRule.onTile("App 4").assertIsFocused()
+    }
+
+    @Test
+    fun theTileThatTakesTheRemovedTilesPlaceIsOnScreenWhenTheFocusedTileWasOutOfView() {
+        val apps = bannerApps(96)
+        showScreen(HomeUiState.Content(apps))
+        // Scrolling as TalkBack does leaves focus on App 1, out of view.
+        composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(60)
+        composeRule.onTile("App 1").assertIsFocused()
+
+        uiState = HomeUiState.Content(apps.drop(1))
+
+        composeRule.onTile("App 2").assertIsFocused().assertIsDisplayed()
     }
 
     @Test
