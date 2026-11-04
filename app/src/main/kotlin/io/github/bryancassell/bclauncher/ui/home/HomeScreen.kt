@@ -27,9 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -212,21 +210,17 @@ private fun AppGrid(
     val grid = remember { FocusRequester() }
     val focus = remember { GridFocus() }
     val state = rememberLazyGridState()
-    // When the focused tile's app leaves the list, as after onLaunchFailed() reloads it, focus goes to the tile that
-    // takes its place. Compose clears focus when the focused node is removed and moves it nowhere else, so Select would
-    // do nothing.
-    var replacement by remember(apps) { mutableStateOf(focus.replacementIn(apps)) }
-    SideEffect {
-        if (apps != focus.shownApps) {
-            focus.keepInPlace(apps, replacement, state)
-            focus.shownApps = apps
-        }
-    }
+    // Picked during composition, so the tiles see it in the first layout of the new list. Tiles already composed are
+    // composed again only when what their content captures changes, so one picked in the SideEffect reached them a
+    // frame late. By then Compose had moved focus to the first tile and started scrolling to it.
+    val replacement = remember(apps) { focus.replacementIn(apps) }
+    SideEffect { focus.show(apps, replacement, state) }
     LazyVerticalGrid(
         columns = GridCells.Fixed(COLUMNS),
         state = state,
         modifier = Modifier
             .fillMaxSize()
+            .onFocusChanged { focus.inGrid = it.hasFocus }
             .focusRequester(grid)
             .focusRestorer(),
         contentPadding = PaddingValues(horizontal = HORIZONTAL_MARGIN, vertical = VERTICAL_MARGIN),
@@ -249,11 +243,14 @@ private fun AppGrid(
                     },
             )
             if (app.component == replacement) {
-                // Once per reload. The grid disposes of this tile when it scrolls out of view and composes it again when
-                // it comes back, which ran this again and took focus from the tile the user had moved to.
-                LaunchedEffect(apps) {
-                    tile.requestFocus()
-                    replacement = null
+                // Only while it's pending. The grid disposes of this tile when it scrolls out of view and composes it
+                // again when it comes back, which runs this again, and it took focus back from the tile the user had
+                // moved to.
+                LaunchedEffect(Unit) {
+                    if (focus.pending == app.component) {
+                        focus.pending = null
+                        tile.requestFocus()
+                    }
                 }
             }
         }
@@ -266,19 +263,50 @@ private fun AppGrid(
     }
 }
 
-/** The app whose tile last had focus, and the list the grid last showed. */
+/** Which tile has focus, kept so that a new list leaves focus on a tile on screen. */
 private class GridFocus {
+    /** The app whose tile last had focus. */
     var app: ComponentName? = null
-    var shownApps: List<InstalledApp> = emptyList()
+
+    /** Whether a tile has focus, rather than the button in the message above the grid. */
+    var inGrid = false
+
+    /** The app whose tile takes the focused tile's place, until that tile takes focus. */
+    var pending: ComponentName? = null
+
+    private var shownApps: List<InstalledApp> = emptyList()
 
     /**
-     * When the focused app has left [apps], the one whose tile takes its place: the next app after it in the shown
-     * list that's still in [apps], or else the last one. Taking the next app rather than the same position keeps focus
-     * beside where it was when tiles before it leave in the same reload.
+     * The tile that has focus, or is to take it, when that's a tile rather than the button in the message above the
+     * grid. A replacement doesn't take focus from the button.
+     */
+    private val focused: ComponentName?
+        get() = pending ?: app.takeIf { inGrid }
+
+    /**
+     * When the focused tile's app has left [apps], as after onLaunchFailed() reloads the list, the app whose tile takes
+     * its place, and otherwise the [pending] one. Compose clears focus when the focused node is removed and moves it
+     * nowhere else, so Select would do nothing.
      */
     fun replacementIn(apps: List<InstalledApp>): ComponentName? {
-        val focused = app ?: return null
-        if (apps.any { it.component == focused }) return null
+        val focused = focused ?: return null
+        return if (apps.any { it.component == focused }) pending else replacementFor(focused, apps)
+    }
+
+    /** Called before [grid] lays out [apps], with the tile that takes the focused one's place, if any. */
+    fun show(apps: List<InstalledApp>, replacement: ComponentName?, grid: LazyGridState) {
+        if (apps == shownApps) return
+        focused?.let { keepInPlace(it, replacement ?: it, apps, grid) }
+        pending = replacement
+        shownApps = apps
+    }
+
+    /**
+     * The app whose tile takes [focused]'s place: the next app after it in the shown list that's still in [apps], or
+     * else the last one. Taking the next app rather than the same position keeps focus beside where it was when tiles
+     * before it leave in the same reload.
+     */
+    private fun replacementFor(focused: ComponentName, apps: List<InstalledApp>): ComponentName? {
         val remaining = apps.mapTo(HashSet()) { it.component }
         val next = shownApps.dropWhile { it.component != focused }.drop(1).firstOrNull {
             it.component in
@@ -288,23 +316,42 @@ private class GridFocus {
     }
 
     /**
-     * Before [grid] lays out [apps], asks it to leave the focused tile, or [replacement] when the focused app has left,
-     * where the focused tile was on screen: the same number of rows below the first one.
+     * Asks [grid] to lay out [apps] with [target] where [focused] was on screen: the same number of rows below the
+     * first row on screen.
      *
-     * LazyGrid otherwise keeps the first visible tile in place. With more than 30 apps, tiles added or moved before the
-     * focused one could push it off screen, where it kept focus out of sight, and a replacement off screen wasn't
-     * composed to take focus (#20). requestScrollToItem() positions the next layout, the first with the new list,
-     * instead of the first visible tile's key (Compose Foundation 1.12.1's LazyGridState.kt), so nothing waits for that
-     * layout. Scrolling only when the tile ends up off screen would have to wait for it.
+     * LazyGrid otherwise keeps the first visible tile in place. Once there are more tiles than fit on screen, tiles
+     * added or moved before the focused one could push it off screen, where it kept focus out of sight, and a
+     * replacement off screen wasn't composed to take focus (#20). requestScrollToItem() positions the next layout, the
+     * first with the new list, instead of the first visible tile's key (Compose Foundation 1.12.1's
+     * LazyGridState.kt), so nothing waits for that layout. Scrolling only when the tile ends up off screen would have
+     * to wait for it.
      */
-    fun keepInPlace(apps: List<InstalledApp>, replacement: ComponentName?, grid: LazyGridState) {
-        val focused = app ?: return
+    private fun keepInPlace(
+        focused: ComponentName,
+        target: ComponentName,
+        apps: List<InstalledApp>,
+        grid: LazyGridState,
+    ) {
         val shownIndex = shownApps.indexOfFirst { it.component == focused }
-        val index = apps.indexOfFirst { it.component == (replacement ?: focused) }
+        val index = apps.indexOfFirst { it.component == target }
         if (shownIndex < 0 || index < 0) return
-        val rowsDown = shownIndex / COLUMNS - grid.firstVisibleItemIndex / COLUMNS
-        val firstRow = (index / COLUMNS - rowsDown).coerceAtLeast(0)
-        grid.requestScrollToItem(firstRow * COLUMNS, grid.firstVisibleItemScrollOffset)
+        val first = grid.firstVisibleItemIndex
+        // When neither the first tile on screen nor the focused one moved, the grid already keeps them in place. Asking
+        // anyway would stop a scroll in progress, such as the one that brings a tile the D-pad just focused into view.
+        // A list of the same apps comes each time the user returns more than 5 s after leaving, with new Drawables.
+        if (index == shownIndex &&
+            apps.getOrNull(first)?.component == shownApps.getOrNull(first)?.component
+        ) {
+            return
+        }
+        val row = index / COLUMNS - (shownIndex / COLUMNS - first / COLUMNS)
+        if (row >= 0) {
+            grid.requestScrollToItem(row * COLUMNS, grid.firstVisibleItemScrollOffset)
+        } else {
+            // The target can't be that far down, so it goes in the first row. That row at the old offset, which can
+            // be most of a row after the TV's focus scrolling, would put the target partly above the screen.
+            grid.requestScrollToItem(0)
+        }
     }
 }
 
