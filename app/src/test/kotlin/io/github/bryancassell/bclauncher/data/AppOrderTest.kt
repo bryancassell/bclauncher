@@ -66,6 +66,49 @@ class AppOrderTest {
     }
 
     @Test
+    fun aRenamedActivityTakesThePlaceOfItsPackagesOldOne() {
+        val renamedYouTube = fakeApp("YouTube", activityName = "com.example.youtube.TvActivity")
+
+        val arranged = orderOf(youTube, apple).arrange(listOf(apple, netflix, renamedYouTube))
+
+        assertEquals(listOf(renamedYouTube, apple, netflix), arranged)
+    }
+
+    @Test
+    fun aPackageWithTwoActivitiesLeavesThemAtTheEnd() {
+        val youTubeKids =
+            fakeApp("YouTube Kids", packageName = "com.example.youtube", activityName = "Kids")
+        val youTubeTv =
+            fakeApp("YouTube TV", packageName = "com.example.youtube", activityName = "Tv")
+
+        val arranged = orderOf(youTube, apple).arrange(listOf(apple, youTubeKids, youTubeTv))
+
+        assertEquals(listOf(apple, youTubeKids, youTubeTv), arranged)
+    }
+
+    @Test
+    fun anActivityTheOrderNamesKeepsItsOwnPlace() {
+        val renamedYouTube = fakeApp("YouTube", activityName = "com.example.youtube.TvActivity")
+
+        val arranged = orderOf(
+            youTube,
+            apple,
+            renamedYouTube,
+        ).arrange(listOf(apple, renamedYouTube))
+
+        assertEquals(listOf(apple, renamedYouTube), arranged)
+    }
+
+    @Test
+    fun theSerializerIgnoresKeysItDoesNotKnow() = runTest {
+        val text = """{"components":["${youTube.component.flattenToString()}"],"hidden":[]}"""
+
+        val read = AppOrderSerializer.readFrom(ByteArrayInputStream(text.encodeToByteArray()))
+
+        assertEquals(orderOf(youTube), read)
+    }
+
+    @Test
     fun theSerializerReadsBackWhatItWrote() = runTest {
         val order = orderOf(youTube, apple)
         val output = ByteArrayOutputStream()

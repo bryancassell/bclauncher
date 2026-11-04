@@ -1,6 +1,7 @@
 package io.github.bryancassell.bclauncher.data
 
 import android.content.Context
+import androidx.datastore.core.CorruptionException
 import androidx.datastore.dataStoreFile
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -11,12 +12,14 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 
 /**
  * The app's Hilt graph builds the repositories with the IO dispatcher, the app's DataStore files and, in tests, the
@@ -70,11 +73,19 @@ class DataModuleTest {
     }
 
     @Test
-    fun injectedRepositoryListsAppsByLabelWhenTheOrderFileIsCorrupt() = runTest {
-        packageSource.setApps(fakeApp("YouTube"), fakeApp("Apple"))
-        context.dataStoreFile("app_order.json").apply { parentFile?.mkdirs() }.writeText("not json")
+    fun injectedRepositoryReplacesACorruptOrderFile() = runTest {
+        val youTube = fakeApp("YouTube")
+        packageSource.setApps(youTube, fakeApp("Apple"))
+        val file = context.dataStoreFile("app_order.json").apply { parentFile?.mkdirs() }
+        file.writeText("not json")
 
         assertEquals(listOf("Apple", "YouTube"), repository.apps.first().map { it.label })
+        assertTrue(ShadowLog.getLogsForTag("DataModule").single().throwable is CorruptionException)
+        assertNotEquals("not json", file.readText())
+
+        // Saving works afterwards, rather than failing on the corrupt file each time.
+        repository.saveOrder(listOf(youTube.component))
+        assertEquals(listOf("YouTube", "Apple"), repository.apps.first().map { it.label })
     }
 
     @Test

@@ -15,6 +15,7 @@ import io.github.bryancassell.bclauncher.data.HomeButtonRepository
 import io.github.bryancassell.bclauncher.data.InstalledAppsRepository
 import io.github.bryancassell.bclauncher.data.fakeApp
 import io.github.bryancassell.bclauncher.data.homeButtonService
+import java.io.IOException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -37,6 +38,7 @@ class HomeViewModelTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val packageSource = FakePackageSource()
     private val accessibilitySource = FakeAccessibilitySource()
+    private val orderStore = FakeDataStore(AppOrder())
 
     // Created on first use, after MainDispatcherRule has set the main dispatcher, so viewModelScope runs on the rule's
     // dispatcher. A field initializer would run first, and viewModelScope would take the real main dispatcher.
@@ -45,7 +47,7 @@ class HomeViewModelTest {
             InstalledAppsRepository(
                 context,
                 packageSource,
-                FakeDataStore(AppOrder()),
+                orderStore,
                 mainDispatcherRule.dispatcher,
             ),
             HomeButtonRepository(context, accessibilitySource),
@@ -136,6 +138,21 @@ class HomeViewModelTest {
         viewModel.retry()
 
         assertEquals(listOf("YouTube"), contentLabels)
+    }
+
+    @Test
+    fun showsAnErrorWhenTheOrderCannotBeReadAndReadsItAgainWhenRetried() = runTest {
+        val youTube = fakeApp("YouTube")
+        packageSource.setApps(fakeApp("Netflix"), youTube)
+        orderStore.updateData { AppOrder(listOf(youTube.component.flattenToString())) }
+        orderStore.readError = IOException("Disk error")
+        collectState()
+        assertEquals(HomeUiState.Error, viewModel.uiState.value)
+
+        orderStore.readError = null
+        viewModel.retry()
+
+        assertEquals(listOf("YouTube", "Netflix"), contentLabels)
     }
 
     @Test

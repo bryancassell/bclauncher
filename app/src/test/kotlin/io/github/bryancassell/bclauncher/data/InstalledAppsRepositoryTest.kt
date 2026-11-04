@@ -74,23 +74,13 @@ class InstalledAppsRepositoryTest {
     }
 
     @Test
-    fun listsAppsByLabelWhenTheOrderCannotBeRead() = runTest {
+    fun passesOnAnErrorReadingTheOrderRatherThanListingAppsByLabel() = runTest {
         packageSource.setApps(fakeApp("YouTube"), fakeApp("Apple"))
-        orderStore.updateData { AppOrder(listOf(fakeApp("YouTube").component.flattenToString())) }
         orderStore.readError = IOException("Disk error")
-
-        val apps = repository().apps.first()
-
-        assertEquals(listOf("Apple", "YouTube"), apps.map { it.label })
-    }
-
-    @Test
-    fun passesOnOtherErrorsReadingTheOrder() = runTest {
-        orderStore.readError = IllegalStateException("Not an IOException")
 
         val error = runCatching { repository().apps.first() }.exceptionOrNull()
 
-        assertTrue(error is IllegalStateException)
+        assertTrue(error is IOException)
     }
 
     @Test

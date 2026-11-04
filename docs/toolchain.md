@@ -79,7 +79,7 @@ R8 removes and renames code that nothing seems to call, so code that's reached o
 1. Clear the log with `adb logcat -b all -c`, so it shows only this check.
 2. Install a signed release on the Google TV emulator, as above. A throwaway keystore is fine for this, with both values set for it in the environment.
 3. Open BC Launcher from the TV's app list, and use what the change touched.
-4. `adb logcat -d -b main,crash | grep -E -A2 'FATAL EXCEPTION|ClassNotFound|NoSuchMethod|NoSuchField'` shows nothing from `io.github.bryancassell.bclauncher`. It finds errors the app caught and logged as well as crashes, and the lines after each match name its process.
+4. `adb logcat -d -b main,crash | grep -E -A2 'FATAL EXCEPTION|ClassNotFound|NoSuchMethod|NoSuchField|CorruptionException'` shows nothing from `io.github.bryancassell.bclauncher`. It finds errors the app caught and logged as well as crashes, and the lines after each match name its process. `CorruptionException` is logged when a stored file can't be parsed, as when R8 breaks its serializer.
 
 When something breaks, `app/build/outputs/mapping/release/usage.txt` lists the code R8 removed, and `retrace` in the SDK's `cmdline-tools` turns a renamed stack trace back into source names using `mapping.txt` from the same build. Keep rules go in `app/src/main/keepRules/*.keep`, each with a comment saying what needs it.
 
@@ -87,7 +87,12 @@ When something breaks, `app/build/outputs/mapping/release/usage.txt` lists the c
 
 Auto Backup saves BC Launcher's DataStore files (ARCHITECTURE.md, Stored data). After changing the backup rules or where data is stored, check on the Google TV emulator that a reinstall brings the data back. The local transport keeps the backup on the emulator, so no Google account is needed.
 
-1. Install the debug build, open BC Launcher, and save some data, such as the order of the apps. `adb shell run-as io.github.bryancassell.bclauncher ls -R files` lists the files, and `cat` in place of `ls -R` shows one.
+1. Install the debug build and give BC Launcher some data. To write the order of the apps by hand, list their components with `adb shell pm query-activities --components -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER`, then run the following and force-stop BC Launcher, since DataStore keeps what it last read:
+   ```
+   echo '{"components":["<component>","<component>"]}' |
+     adb shell "run-as io.github.bryancassell.bclauncher sh -c 'mkdir -p files/datastore && cat > files/datastore/app_order.json'"
+   ```
+   `adb shell run-as io.github.bryancassell.bclauncher ls -R files` lists the files, and `cat` in place of `ls -R` shows one.
 2. Back up to the local transport:
    ```
    adb shell bmgr enable true

@@ -1,6 +1,7 @@
 package io.github.bryancassell.bclauncher.data
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.DataStoreFactory
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
@@ -17,6 +18,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+
+private const val TAG = "DataModule"
 
 /** Qualifies the dispatcher for blocking calls (ARCHITECTURE.md, Dependency injection). */
 @Qualifier
@@ -35,8 +38,9 @@ object DispatchersModule {
 @InstallIn(SingletonComponent::class)
 object DataStoreModule {
     /**
-     * A singleton (ARCHITECTURE.md, Stored data). A file that can't be parsed is replaced with an empty order, so the
-     * apps show alphabetically rather than not at all.
+     * A singleton, since DataStore fails when two instances in a process use the same file (ARCHITECTURE.md, Stored
+     * data). A file that can't be parsed is replaced with an empty order, so the apps show alphabetically rather than
+     * every read failing. That's logged, so a release whose serializer R8 broke shows it in logcat.
      */
     @Provides
     @Singleton
@@ -45,7 +49,10 @@ object DataStoreModule {
         @IoDispatcher ioDispatcher: CoroutineDispatcher,
     ): DataStore<AppOrder> = DataStoreFactory.create(
         serializer = AppOrderSerializer,
-        corruptionHandler = ReplaceFileCorruptionHandler { AppOrder() },
+        corruptionHandler = ReplaceFileCorruptionHandler { error ->
+            Log.e(TAG, "Replacing the app order, which couldn't be parsed", error)
+            AppOrder()
+        },
         scope = CoroutineScope(ioDispatcher + SupervisorJob()),
         produceFile = { context.dataStoreFile("app_order.json") },
     )
