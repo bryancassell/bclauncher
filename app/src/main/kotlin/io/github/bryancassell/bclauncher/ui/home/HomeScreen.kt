@@ -29,7 +29,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -67,10 +69,10 @@ private val HORIZONTAL_MARGIN = 58.dp
 private val VERTICAL_MARGIN = 28.dp
 
 /**
- * Between the buttons at the top and what's below them. It keeps five rows of tiles, 30 apps, above the bottom margin
- * of a 540 dp screen: 28 + 40 + 12 + 5 × 70 + 4 × 20 = 510 dp of the 512 dp inside it. A 69.75 dp tile is drawn 70
- * dp tall at the 2x density of a 1080p TV, and 15 dp put the last row 1 dp into the margin (PRD.md, Design
- * decisions).
+ * Between the buttons at the top and what's below them. It keeps five rows of tiles, the 30 apps that fit on screen
+ * (PRD.md, Design decisions), above the bottom margin of a 540 dp screen: 28 + 40 + 12 + 5 × 70 + 4 × 20 = 510 dp of
+ * the 512 dp inside it. A 69.75 dp tile is drawn 70 dp tall at the 2x density of a 1080p TV, and 15 dp put the last
+ * row 1 dp into the margin.
  */
 private val GAP_BELOW = 12.dp
 
@@ -105,8 +107,9 @@ fun HomeScreen(modifier: Modifier = Modifier, viewModel: HomeViewModel = hiltVie
         showsGoogleTv = googleTvHomeIntent != null,
         onGoogleTv = {
             googleTvHomeIntent?.let { intent ->
-                viewModel.onOpeningGoogleTvHome()
-                context.startOrSaySo(intent, R.string.google_tv_did_not_open)
+                viewModel.onOpeningGoogleTvHome {
+                    context.startOrSaySo(intent, R.string.google_tv_did_not_open)
+                }
             }
         },
         onSettings = {
@@ -188,7 +191,11 @@ internal fun HomeScreen(
  * The buttons that open Google TV's home and device settings, at the top right inside the grid's margins. Google TV's
  * is left out when [showsGoogleTv] is false. Focus starts on the apps, and Up from the first row, or from the message,
  * reaches them. With no apps and no message, the first button [takesFocus], since nothing else can, so Select presses
- * it. It takes focus again when the message leaves, which leaves focus nowhere, for the reason AppGrid gives.
+ * it. It takes focus again when the message leaves, and when Google TV's button comes or goes, since the apps can load
+ * before Google TV's home is found.
+ *
+ * When Google TV's button leaves with focus on it, as when Google TV's launcher is turned off, Settings takes focus. A
+ * focused button that leaves, like the message's, leaves focus nowhere, for the reason AppGrid gives.
  */
 @Composable
 private fun SystemScreenButtons(
@@ -198,6 +205,8 @@ private fun SystemScreenButtons(
     takesFocus: Boolean,
 ) {
     val buttons = remember { FocusRequester() }
+    val settings = remember { FocusRequester() }
+    var googleTvFocused by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -207,16 +216,25 @@ private fun SystemScreenButtons(
         horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
     ) {
         if (showsGoogleTv) {
-            Button(onClick = onGoogleTv) {
+            Button(
+                onClick = onGoogleTv,
+                modifier = Modifier.onFocusChanged { googleTvFocused = it.isFocused },
+            ) {
                 Text(text = stringResource(R.string.google_tv))
             }
         }
-        Button(onClick = onSettings) {
+        Button(onClick = onSettings, modifier = Modifier.focusRequester(settings)) {
             Text(text = stringResource(R.string.settings))
         }
     }
-    LaunchedEffect(takesFocus) {
-        if (takesFocus) buttons.requestFocus()
+    // Read while composing, before the button leaves: clearing its focus as it leaves reports it unfocused.
+    val googleTvLeftWithFocus = !showsGoogleTv && googleTvFocused
+    LaunchedEffect(takesFocus, showsGoogleTv) {
+        if (takesFocus) {
+            buttons.requestFocus()
+        } else if (googleTvLeftWithFocus) {
+            settings.requestFocus()
+        }
     }
 }
 

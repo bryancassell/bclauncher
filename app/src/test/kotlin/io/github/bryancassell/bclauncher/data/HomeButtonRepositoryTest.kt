@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Looper
 import android.provider.Settings
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -66,11 +67,17 @@ class HomeButtonRepositoryTest {
     }
 
     @Test
-    fun openingGoogleTvHomeTellsTheServiceInThisAppAlone() {
-        repository.openingGoogleTvHome()
+    fun openingGoogleTvHomeTellsTheServiceInThisAppAloneThenOpensIt() {
+        var opened = 0
+
+        repository.openingGoogleTvHome { opened++ }
+        shadowOf(Looper.getMainLooper()).idle()
 
         val broadcast = shadowOf(context as Application).broadcastIntents.single()
         assertEquals(HomeButtonService.ACTION_OPENING_GOOGLE_TV_HOME, broadcast.action)
         assertEquals(context.packageName, broadcast.`package`)
+        assertTrue(broadcast.flags and Intent.FLAG_RECEIVER_FOREGROUND != 0)
+        // With no receiver registered, as while the service is off, it still opens.
+        assertEquals(1, opened)
     }
 }

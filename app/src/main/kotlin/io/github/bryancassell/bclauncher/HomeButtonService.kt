@@ -83,13 +83,13 @@ class HomeButtonService : AccessibilityService() {
     }
 
     /**
-     * Ends both waits when the home screen's Google TV button opens Google TV's home, so BC Launcher doesn't open in
-     * its place (#6). The button sends this just before it starts Google TV's home. On the Google TV emulator (API 36),
-     * it arrived 1 to 3 ms after the start, and 60 to 200 ms before Google TV's window event, which also comes on the
-     * main thread.
+     * Ends both waits, and any hand-off still to open BC Launcher, when the home screen's Google TV button opens Google
+     * TV's home, so BC Launcher doesn't open in its place (#6). The button starts Google TV's home only once this has
+     * run, as the ordered broadcast's result (HomeButtonRepository.openingGoogleTvHome).
      */
     private val openingGoogleTvHome = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            handler.removeCallbacks(openAfterHandOff)
             waitingForFront = false
             handOffGuardUntil = 0L
         }

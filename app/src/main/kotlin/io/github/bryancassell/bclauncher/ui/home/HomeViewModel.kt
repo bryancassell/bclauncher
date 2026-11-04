@@ -101,9 +101,12 @@ class HomeViewModel @Inject constructor(
     val settingsIntent: Intent
         get() = systemScreensRepository.settingsIntent
 
-    /** Keeps BC Launcher's service from opening BC Launcher over Google TV's home, which the screen starts next. */
-    fun onOpeningGoogleTvHome() {
-        homeButtonRepository.openingGoogleTvHome()
+    /**
+     * Keeps BC Launcher's service from opening BC Launcher over Google TV's home, then calls [open], where the screen
+     * starts it.
+     */
+    fun onOpeningGoogleTvHome(open: () -> Unit) {
+        homeButtonRepository.openingGoogleTvHome(open)
     }
 
     /**

@@ -61,6 +61,7 @@ class HomeScreenTest {
     // A test changes what the screen shows by setting these after showScreen.
     private var uiState by mutableStateOf<HomeUiState>(HomeUiState.Loading)
     private var showsHomeButtonMessage by mutableStateOf(false)
+    private var showsGoogleTv by mutableStateOf(true)
 
     private fun showScreen(
         initial: HomeUiState,
@@ -69,6 +70,7 @@ class HomeScreenTest {
     ) {
         uiState = initial
         showsHomeButtonMessage = homeButtonMessage
+        showsGoogleTv = googleTv
         composeRule.setContent {
             BcLauncherTheme {
                 HomeScreen(
@@ -77,7 +79,7 @@ class HomeScreenTest {
                     onAppClick = { clicked += it },
                     onRetry = { retries++ },
                     onUseBcLauncher = { homeButtonSettingsOpened++ },
-                    showsGoogleTv = googleTv,
+                    showsGoogleTv = showsGoogleTv,
                     onGoogleTv = { googleTvOpened++ },
                     onSettings = { settingsOpened++ },
                 )
@@ -395,6 +397,51 @@ class HomeScreenTest {
         showScreen(HomeUiState.Empty, googleTv = false)
 
         onSettings().assertIsFocused()
+    }
+
+    @Test
+    fun googleTvTakesFocusWhenItArrivesWithNoApps() {
+        // The apps loaded before Google TV's home was found.
+        showScreen(HomeUiState.Empty, googleTv = false)
+        onSettings().assertIsFocused()
+
+        showsGoogleTv = true
+
+        onGoogleTv().assertIsFocused()
+    }
+
+    @Test
+    fun settingsTakesFocusWhenGoogleTvLeavesWithNoApps() {
+        showScreen(HomeUiState.Empty)
+        onGoogleTv().assertIsFocused()
+
+        // Google TV's launcher was turned off.
+        showsGoogleTv = false
+
+        onSettings().assertIsFocused()
+    }
+
+    @Test
+    fun settingsTakesFocusWhenGoogleTvLeavesWithFocusOnIt() {
+        showScreen(HomeUiState.Content(bannerApps(8)))
+        composeRule.pressKeys(listOf(Key.DirectionUp))
+        onGoogleTv().assertIsFocused()
+
+        showsGoogleTv = false
+
+        onSettings().assertIsFocused()
+        composeRule.pressKeys(listOf(Key.DirectionCenter))
+        assertEquals(1, settingsOpened)
+    }
+
+    @Test
+    fun focusStaysOnItsTileWhenGoogleTvLeaves() {
+        showScreen(HomeUiState.Content(bannerApps(8)))
+        composeRule.pressKeys(listOf(Key.DirectionRight))
+
+        showsGoogleTv = false
+
+        composeRule.onTile("App 2").assertIsFocused()
     }
 
     @Test

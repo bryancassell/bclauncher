@@ -161,11 +161,16 @@ class HomeButtonServiceTest {
         windowComesToTheFront(googleTvHome.packageName, googleTvHome.className)
     }
 
-    // As the home screen's Google TV button does: it tells the service, then Google TV's home comes to the front.
+    // As the home screen's Google TV button does: it tells the service, and once the service has been told, it starts
+    // Google TV's home, which comes to the front.
     private fun openGoogleTvsHomeFromBcLauncher() {
-        HomeButtonRepository(application, FakeAccessibilitySource()).openingGoogleTvHome()
+        var opened = false
+        HomeButtonRepository(application, FakeAccessibilitySource()).openingGoogleTvHome {
+            opened = true
+            googleTvsHomeComesToTheFront()
+        }
         idleFor(0)
-        googleTvsHomeComesToTheFront()
+        assertTrue(opened)
     }
 
     // The service connected with BC Launcher in front, then the user pressed Home and BC Launcher opened.
@@ -364,6 +369,19 @@ class HomeButtonServiceTest {
         connectWithInFront(null)
 
         openGoogleTvsHomeFromBcLauncher()
+
+        assertNull(startedActivity)
+    }
+
+    @Test
+    fun openingGoogleTvsHomeFromBcLauncherDuringTheHandOffDelayOpensNothing() {
+        installGoogleTvHome()
+        connectWithInFront(application.packageName)
+        pressHome()
+        idleFor(handOffDelay - 40)
+
+        openGoogleTvsHomeFromBcLauncher()
+        idleFor(handOffDelay)
 
         assertNull(startedActivity)
     }

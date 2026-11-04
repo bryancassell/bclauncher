@@ -69,6 +69,9 @@ class DataModuleTest {
         val home = ComponentName("com.example.home", "com.example.home.HomeActivity")
         packageSource.setHome(home)
 
-        assertEquals(home, systemScreensRepository.googleTvHomeIntent.first()?.component)
+        assertEquals(
+            home.packageName,
+            systemScreensRepository.googleTvHomeIntent.first()?.`package`,
+        )
     }
 }

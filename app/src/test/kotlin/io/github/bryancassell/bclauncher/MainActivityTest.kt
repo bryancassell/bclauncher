@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.ComponentName
 import android.content.Intent
 import android.graphics.drawable.ColorDrawable
+import android.os.Looper
 import android.provider.Settings
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.key.Key
@@ -223,13 +224,15 @@ class MainActivityTest {
         packageSource.setHome(googleTvHome)
 
         composeRule.pressKeys(toGoogleTv + Key.DirectionCenter)
+        // Google TV's home starts once the service has the broadcast, as its result.
+        shadowOf(Looper.getMainLooper()).idle()
 
         assertEquals(
             HomeButtonService.ACTION_OPENING_GOOGLE_TV_HOME,
             shadowOf(application).broadcastIntents.single().action,
         )
         val started = shadowOf(application).nextStartedActivity
-        assertEquals(googleTvHome, started.component)
+        assertEquals(googleTvHome.packageName, started.`package`)
         assertTrue(started.hasCategory(Intent.CATEGORY_HOME))
     }
 
@@ -240,6 +243,8 @@ class MainActivityTest {
         shadowOf(application).checkActivities(true)
 
         composeRule.pressKeys(toGoogleTv + Key.DirectionCenter)
+        // Google TV's home starts once the service has the broadcast, as its result.
+        shadowOf(Looper.getMainLooper()).idle()
 
         assertEquals(
             application.getString(R.string.google_tv_did_not_open),

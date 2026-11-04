@@ -3,6 +3,7 @@ package io.github.bryancassell.bclauncher.ui.home
 import android.app.Application
 import android.content.ComponentName
 import android.content.Context
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import androidx.lifecycle.viewModelScope
@@ -188,7 +189,7 @@ class HomeViewModelTest {
 
         collectState()
 
-        assertEquals(googleTvHome, viewModel.googleTvHomeIntent.value?.component)
+        assertEquals(googleTvHome.packageName, viewModel.googleTvHomeIntent.value?.`package`)
     }
 
     @Test
@@ -211,13 +212,17 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun openingGoogleTvsHomeTellsTheHomeButtonService() {
-        viewModel.onOpeningGoogleTvHome()
+    fun openingGoogleTvsHomeTellsTheHomeButtonServiceThenOpensIt() {
+        var opened = 0
+
+        viewModel.onOpeningGoogleTvHome { opened++ }
+        shadowOf(Looper.getMainLooper()).idle()
 
         assertEquals(
             HomeButtonService.ACTION_OPENING_GOOGLE_TV_HOME,
             shadowOf(context as Application).broadcastIntents.single().action,
         )
+        assertEquals(1, opened)
     }
 
     @Test

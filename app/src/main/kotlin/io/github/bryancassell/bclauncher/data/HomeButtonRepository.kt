@@ -1,5 +1,7 @@
 package io.github.bryancassell.bclauncher.data
 
+import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -33,12 +35,27 @@ class HomeButtonRepository @Inject constructor(
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     /**
-     * Tells [HomeButtonService] that the user is opening Google TV's home, so it doesn't open BC Launcher in its place.
-     * Call it just before starting Google TV's home. It runs in another process, so this is a broadcast.
+     * Tells [HomeButtonService] that the user is opening Google TV's home, so it doesn't open BC Launcher in its place,
+     * then calls [open] on the main thread to start it. The service runs in another process, so this is a broadcast.
+     *
+     * It's ordered, and [open] is its result receiver, so Google TV's home starts only once the service's receiver has
+     * run. Otherwise the broadcast and Google TV's window event would reach the service in no set order, and BC
+     * Launcher would open over Google TV's home whenever the broadcast came second. With the service off, no receiver
+     * waits, and [open] runs at once. FLAG_RECEIVER_FOREGROUND keeps a busy background queue from holding it up.
      */
-    fun openingGoogleTvHome() {
-        context.sendBroadcast(
-            Intent(HomeButtonService.ACTION_OPENING_GOOGLE_TV_HOME).setPackage(context.packageName),
+    fun openingGoogleTvHome(open: () -> Unit) {
+        context.sendOrderedBroadcast(
+            Intent(HomeButtonService.ACTION_OPENING_GOOGLE_TV_HOME)
+                .setPackage(context.packageName)
+                .addFlags(Intent.FLAG_RECEIVER_FOREGROUND),
+            null,
+            object : BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: Intent) = open()
+            },
+            null,
+            Activity.RESULT_OK,
+            null,
+            null,
         )
     }
 }
