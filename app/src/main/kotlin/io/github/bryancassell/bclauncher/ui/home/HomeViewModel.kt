@@ -57,9 +57,10 @@ class HomeViewModel @Inject constructor(
                     if (apps.isEmpty()) HomeUiState.Empty else HomeUiState.Content(apps)
                 }
                 // PackageManager catches the exceptions that loading a label or an image throws, so what gets here
-                // is an Error such as OutOfMemoryError (#4). Caught inside flatMapLatest, so a failed load ends only
-                // this collection, and retry() can start another. Logged, so it shows in logcat, such as a class R8
-                // removed from a release build.
+                // is an Error such as OutOfMemoryError (#4), or an exception reading the saved order, such as an
+                // IOException when its file can't be read (#8). Caught inside flatMapLatest, so a failed load ends
+                // only this collection, and retry() can start another. Logged, so it shows in logcat, such as a class
+                // R8 removed from a release build.
                 .catch { error ->
                     Log.e(TAG, "Couldn't load the apps", error)
                     emit(HomeUiState.Error)

@@ -10,13 +10,16 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.bryancassell.bclauncher.HomeButtonService
 import io.github.bryancassell.bclauncher.MainDispatcherRule
+import io.github.bryancassell.bclauncher.data.AppOrder
 import io.github.bryancassell.bclauncher.data.FakeAccessibilitySource
+import io.github.bryancassell.bclauncher.data.FakeDataStore
 import io.github.bryancassell.bclauncher.data.FakePackageSource
 import io.github.bryancassell.bclauncher.data.HomeButtonRepository
 import io.github.bryancassell.bclauncher.data.InstalledAppsRepository
 import io.github.bryancassell.bclauncher.data.SystemScreensRepository
 import io.github.bryancassell.bclauncher.data.fakeApp
 import io.github.bryancassell.bclauncher.data.homeButtonService
+import java.io.IOException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -43,12 +46,18 @@ class HomeViewModelTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val packageSource = FakePackageSource()
     private val accessibilitySource = FakeAccessibilitySource()
+    private val orderStore = FakeDataStore(AppOrder())
 
     // Created on first use, after MainDispatcherRule has set the main dispatcher, so viewModelScope runs on the rule's
     // dispatcher. A field initializer would run first, and viewModelScope would take the real main dispatcher.
     private val viewModel by lazy {
         HomeViewModel(
-            InstalledAppsRepository(context, packageSource, mainDispatcherRule.dispatcher),
+            InstalledAppsRepository(
+                context,
+                packageSource,
+                orderStore,
+                mainDispatcherRule.dispatcher,
+            ),
             HomeButtonRepository(context, accessibilitySource),
             SystemScreensRepository(packageSource, mainDispatcherRule.dispatcher),
         )
@@ -146,6 +155,21 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun showsAnErrorWhenTheOrderCannotBeReadAndReadsItAgainWhenRetried() = runTest {
+        val youTube = fakeApp("YouTube")
+        packageSource.setApps(fakeApp("Netflix"), youTube)
+        orderStore.updateData { AppOrder(listOf(youTube.component.flattenToString())) }
+        orderStore.readError = IOException("Disk error")
+        collectState()
+        assertEquals(HomeUiState.Error, viewModel.uiState.value)
+
+        orderStore.readError = null
+        viewModel.retry()
+
+        assertEquals(listOf("YouTube", "Netflix"), contentLabels)
+    }
+
+    @Test
     fun hidesTheHomeButtonMessageUntilItKnowsWhatHomeOpens() {
         assertFalse(viewModel.showsHomeButtonMessage.value)
     }
@@ -180,7 +204,12 @@ class HomeViewModelTest {
         // The lookup waits on this dispatcher until the test lets it run.
         val lookups = StandardTestDispatcher(testScheduler)
         val viewModel = HomeViewModel(
-            InstalledAppsRepository(context, packageSource, mainDispatcherRule.dispatcher),
+            InstalledAppsRepository(
+                context,
+                packageSource,
+                orderStore,
+                mainDispatcherRule.dispatcher,
+            ),
             HomeButtonRepository(context, accessibilitySource),
             SystemScreensRepository(packageSource, lookups),
         )

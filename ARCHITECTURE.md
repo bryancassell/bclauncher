@@ -9,6 +9,7 @@ Decisions and conventions that more than one part of BC Launcher follows, with t
 - [UI toolkit](#ui-toolkit)
 - [Layers and packages](#layers-and-packages)
 - [Dependency injection](#dependency-injection)
+- [Stored data](#stored-data)
 - [Tests](#tests)
 - [Home button](#home-button)
 
@@ -20,6 +21,7 @@ Decisions and conventions that more than one part of BC Launcher follows, with t
 | [UI toolkit](#ui-toolkit) | Compose for TV, with components from `androidx.tv.material3`. |
 | [Layers and packages](#layers-and-packages) | A UI layer and a data layer in one `app` module, with no domain layer yet. |
 | [Dependency injection](#dependency-injection) | Hilt, with KSP. |
+| [Stored data](#stored-data) | Typed DataStore as JSON with kotlinx.serialization, included in Auto Backup. |
 | [Tests](#tests) | Local Robolectric tests, as a 1080p TV on API 29 and 37. |
 | [Home button](#home-button) | Google TV's launcher stays Android's Home app, so an accessibility service in its own process takes the Home key. |
 
@@ -46,6 +48,10 @@ Everything is in one `app` module, since the app is small (#1).
 Hilt provides dependencies, with KSP generating its code. It's Jetpack's recommended library, and a missing binding fails the build, not the running app (#1).
 
 Blocking calls run on the dispatcher injected as `@IoDispatcher`, so tests can pass a test dispatcher (#4).
+
+## Stored data
+
+BC Launcher stores data, such as the app order, with typed DataStore: one `@Serializable` class per file, in JSON via kotlinx.serialization. Unlike Preferences DataStore, it keeps a list in order. Each file has one `DataStore`, a Hilt singleton, since two in one process can't share a file. Only the main process uses them: `:home_button` would need `MultiProcessDataStoreFactory`. Auto Backup includes the files, so a reinstall or a new device gets them back (docs/toolchain.md, Checking backup and restore) (#8).
 
 ## Tests
 
