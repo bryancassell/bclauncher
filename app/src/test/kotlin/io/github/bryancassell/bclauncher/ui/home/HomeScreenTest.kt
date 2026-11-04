@@ -472,10 +472,25 @@ class HomeScreenTest {
     }
 
     @Test
+    fun aTileTakesFocusWhenTheHomeButtonMessageLeavesAsTheTileFocusLeftGoes() {
+        val apps = bannerApps(8)
+        showScreen(HomeUiState.Content(apps), homeButtonMessage = true)
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionUp))
+        onUseBcLauncher().assertIsFocused()
+
+        // App 2's tile last had focus. It leaves in the same frame as the message.
+        uiState = HomeUiState.Content(apps - apps[1])
+        showsHomeButtonMessage = false
+
+        composeRule.onTile("App 1").assertIsFocused()
+    }
+
+    @Test
     fun focusReturnsToItsTileWhenTheHomeButtonMessageLeavesBesideATileWithTheSameHash() {
         val (aa, bb) = appsWithTheSameHash()
         showScreen(HomeUiState.Content(listOf(bb, aa)), homeButtonMessage = true)
         composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionUp))
+        onUseBcLauncher().assertIsFocused()
 
         showsHomeButtonMessage = false
 

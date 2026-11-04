@@ -335,15 +335,14 @@ private fun HomeButtonMessage(onUseBcLauncher: () -> Unit, takesFocus: Boolean) 
  * configuration change or when its process was stopped to free memory. Focus returns to that app's tile whenever it
  * comes back into the grid, as with Down from a button above it, after a recreation, and each time the message above
  * the grid comes or goes: when the user turns on the service and comes back, the message leaves with focus on its
- * button, and Compose clears focus and moves it nowhere, so Select would do nothing. Once that app has left the list,
- * focus goes where the D-pad sends it, such as to the tile below the button.
+ * button, and Compose clears focus and moves it nowhere, so Select would do nothing. When that app has left the list,
+ * or its tile isn't composed, Down from a button goes where the D-pad sends it, such as to the tile below, and otherwise
+ * focus goes to the first tile.
  *
  * The tile is found by its app rather than with Compose's focusRestorer(), which finds it by its node's
  * compositeKeyHash and focuses the first tile with that hash (Compose UI 1.12.1's FocusRestorer.kt). On a TV, a tile
- * node that the grid reuses for another app keeps the hash of the app it was made for, so once the grid has scrolled,
- * two tiles on screen can share a hash. That was seen by logging each tile node's hash on the Google TV emulator, with
- * Compose UI and Foundation 1.12.1. Down from the message's button then focused a tile in the third row, once the app
- * whose tile had last had focus was uninstalled (#28).
+ * node that the grid reuses for another app keeps the hash of the app it was made for (Compose UI and Foundation
+ * 1.12.1), so once the grid has scrolled, two tiles on screen can share a hash, and focus could go to the wrong one (#28).
  *
  * Holding Select on a tile opens its app's menu. It's saved too, so it's still open after a configuration change
  * recreates the activity. Otherwise it closes when the screen stops, so Home or coming back from another app shows the
@@ -380,6 +379,9 @@ private fun AppGrid(
             .fillMaxSize()
             .onFocusChanged { focus.inGrid = it.hasFocus }
             .focusRequester(grid)
+            // onEnter runs whenever focus comes in from outside the grid, also for a request aimed at one tile, which
+            // then goes to the app's tile instead, as it did with focusRestorer(). The only such request here is from
+            // the tile that takes a removed tile's place, once the removed app has left the list and has no tile.
             .focusProperties { onEnter = { focus.restore() } }
             .onPreviewKeyEvent { menuPress.onKeyEvent(it) },
         contentPadding = PaddingValues(
@@ -394,9 +396,10 @@ private fun AppGrid(
         // Keyed by component, so focus stays on the same app when the list is replaced.
         items(apps, key = { app -> app.component }) { app ->
             val tile = remember { FocusRequester() }
-            DisposableEffect(app.component) {
-                focus.tiles[app.component] = tile
-                onDispose { focus.tiles.remove(app.component, tile) }
+            val component = app.component
+            DisposableEffect(component) {
+                focus.tiles[component] = tile
+                onDispose { focus.tiles.remove(component, tile) }
             }
             AppTile(
                 app = app,
@@ -425,9 +428,9 @@ private fun AppGrid(
             }
         }
     }
-    // The app's tile first, because requestFocus() on the grid focuses its first tile even when onEnter moves focus to
-    // another one on the way in: onEnter runs inside the request, which then carries on (Compose UI 1.12.1's
-    // FocusTargetNode.requestFocus).
+    // The app's tile itself, not the grid: requestFocus() on the grid focuses its first tile when focus is already on a
+    // tile, where onEnter doesn't run. It is when the message arrives, and it can be when the message leaves, once
+    // Compose has moved focus from the removed button into the grid (Compose UI 1.12.1's FocusTargetNode.kt).
     LaunchedEffect(messageShown) {
         if (!focus.restore()) grid.requestFocus()
     }
@@ -480,7 +483,10 @@ private class MenuPress {
 // The keys tv-material's Card clicks on (SurfaceImpl.kt's AcceptableEnterClickKeys in tv-material 1.1.0).
 private val SELECT_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter)
 
-/** Which tile has focus, kept so that a new list leaves focus on a tile on screen. */
+/**
+ * Which tile has focus, kept so that a new list leaves focus on a tile on screen, and so that focus coming back into the
+ * grid returns to the same app's tile.
+ */
 private class GridFocus {
     /** The app whose tile last had focus. */
     var app: ComponentName? = null
@@ -513,8 +519,15 @@ private class GridFocus {
         return if (apps.any { it.component == focused }) focused else replacementFor(focused, apps)
     }
 
-    /** Focuses [app]'s tile, and says whether it could: not when the app has left the list or its tile isn't composed. */
-    fun restore(): Boolean = app?.let { tiles[it] }?.requestFocus() == true
+    /**
+     * Focuses [app]'s tile, and says whether it could: not when the app has left the list or its tile isn't composed.
+     * The list is checked too, since a removed app's tile stays in [tiles] until the grid disposes of it, which can be a
+     * frame after the list changes.
+     */
+    fun restore(): Boolean {
+        val app = app?.takeIf { app -> shownApps.any { it.component == app } } ?: return false
+        return tiles[app]?.requestFocus() == true
+    }
 
     /** Called before [grid] lays out [apps], with the [target] that [targetIn] picked in them. */
     fun show(apps: List<InstalledApp>, target: ComponentName?, grid: LazyGridState) {
