@@ -9,6 +9,9 @@
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
+    <!-- So an app's menu can ask the system to uninstall it with ACTION_DELETE (#7). -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
     <!--
     Makes the apps the home screen lists visible from API 30, without QUERY_ALL_PACKAGES (#4), and
     the system's Home app, Google TV, which HomeButtonService opens BC Launcher in place of (#10).

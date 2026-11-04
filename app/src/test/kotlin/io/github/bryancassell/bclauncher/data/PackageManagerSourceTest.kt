@@ -24,8 +24,10 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
@@ -46,10 +48,12 @@ class PackageManagerSourceTest {
         activityBanner: Int = 0,
         exported: Boolean = true,
         permission: String? = null,
+        system: Boolean = false,
     ) {
         val application = ApplicationInfo().apply {
             this.packageName = packageName
             banner = applicationBanner
+            if (system) flags = ApplicationInfo.FLAG_SYSTEM
         }
         packageManager.installPackage(
             PackageInfo().apply {
@@ -142,6 +146,15 @@ class PackageManagerSourceTest {
         )
 
         assertSame(activityBanner, listedApp("com.example.tv").banner)
+    }
+
+    @Test
+    fun marksTheAppsThatCameWithTheSystem() {
+        install("com.example.system", system = true)
+        install("com.example.installed")
+
+        assertTrue(listedApp("com.example.system").isSystemApp)
+        assertFalse(listedApp("com.example.installed").isSystemApp)
     }
 
     @Test
