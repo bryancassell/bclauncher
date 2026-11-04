@@ -27,7 +27,7 @@ class FakePackageSource @Inject constructor() : PackageSource {
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
 
     @Volatile
-    private var home: ComponentName? = null
+    private var home: String? = null
 
     @Volatile
     private var homeFailure: Throwable? = null
@@ -50,17 +50,17 @@ class FakePackageSource @Inject constructor() : PackageSource {
         }
     }
 
-    override fun homeActivity(): ComponentName? {
+    override fun homePackage(): String? {
         homeFailure?.let { throw it }
         return home
     }
 
     /**
-     * Makes [component] the activity a Home intent opens, or none when it's null, and reports a change, as turning
-     * Google TV's launcher on or off would.
+     * Makes [packageName] the package of the activity a Home intent opens, or none when it's null, and reports a
+     * change, as turning Google TV's launcher on or off would.
      */
-    fun setHome(component: ComponentName?) {
-        home = component
+    fun setHome(packageName: String?) {
+        home = packageName
         listeners.forEach { it() }
     }
 

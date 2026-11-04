@@ -1,7 +1,6 @@
 package io.github.bryancassell.bclauncher.ui.home
 
 import android.app.Application
-import android.content.ComponentName
 import android.content.Context
 import android.os.Looper
 import android.provider.Settings
@@ -20,8 +19,10 @@ import io.github.bryancassell.bclauncher.data.fakeApp
 import io.github.bryancassell.bclauncher.data.homeButtonService
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -74,10 +75,7 @@ class HomeViewModelTest {
         }
     }
 
-    private val googleTvHome = ComponentName(
-        "com.google.android.apps.tv.launcherx",
-        "com.google.android.apps.tv.launcherx.home.HomeActivity",
-    )
+    private val googleTv = "com.google.android.apps.tv.launcherx"
 
     @Test
     fun isLoadingBeforeTheAppsLoad() {
@@ -177,19 +175,33 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun hidesGoogleTvUntilItsHomeIsFound() {
-        packageSource.setHome(googleTvHome)
+    fun hidesGoogleTvUntilItsHomeIsFound() = runTest {
+        packageSource.setHome(googleTv)
+        // The lookup waits on this dispatcher until the test lets it run.
+        val lookups = StandardTestDispatcher(testScheduler)
+        val viewModel = HomeViewModel(
+            InstalledAppsRepository(context, packageSource, mainDispatcherRule.dispatcher),
+            HomeButtonRepository(context, accessibilitySource),
+            SystemScreensRepository(packageSource, lookups),
+        )
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.googleTvHomeIntent.collect {}
+        }
 
         assertNull(viewModel.googleTvHomeIntent.value)
+
+        advanceUntilIdle()
+        assertEquals(googleTv, viewModel.googleTvHomeIntent.value?.`package`)
+        viewModel.viewModelScope.cancel()
     }
 
     @Test
     fun opensGoogleTvsHomeOnceFound() = runTest {
-        packageSource.setHome(googleTvHome)
+        packageSource.setHome(googleTv)
 
         collectState()
 
-        assertEquals(googleTvHome.packageName, viewModel.googleTvHomeIntent.value?.`package`)
+        assertEquals(googleTv, viewModel.googleTvHomeIntent.value?.`package`)
     }
 
     @Test

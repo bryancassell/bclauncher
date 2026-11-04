@@ -19,20 +19,20 @@ class SystemScreensRepository @Inject constructor(
      * The intent that opens Google TV's home, or null when there's no Home activity to open, emitted again when a
      * package change changes which that is.
      *
-     * It names the Home activity's package, not the activity. Android starts an activity named outright by an app
+     * It names only the Home activity's package. Android starts an activity named outright by an app
      * other than the system as an ordinary activity, not as Home, so it could start a second copy of Google TV's home
      * in a task of its own. With only the package named, Android starts it as Home, in Google TV's existing home task
      * (ActivityRecord.setActivityType, AOSP main in November 2026).
      */
     val googleTvHomeIntent: Flow<Intent?> = packageSource.changes
         .conflate()
-        .map { packageSource.homeActivity() }
+        .map { packageSource.homePackage() }
         .distinctUntilChanged()
         .map { home ->
             home?.let {
                 Intent(Intent.ACTION_MAIN)
                     .addCategory(Intent.CATEGORY_HOME)
-                    .setPackage(it.packageName)
+                    .setPackage(it)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
         }

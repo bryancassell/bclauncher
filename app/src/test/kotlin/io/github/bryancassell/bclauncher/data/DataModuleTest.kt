@@ -1,6 +1,5 @@
 package io.github.bryancassell.bclauncher.data
 
-import android.content.ComponentName
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -65,12 +64,11 @@ class DataModuleTest {
     }
 
     @Test
-    fun injectedSystemScreensRepositoryOpensTheSourcesHomeActivity() = runTest {
-        val home = ComponentName("com.example.home", "com.example.home.HomeActivity")
-        packageSource.setHome(home)
+    fun injectedSystemScreensRepositoryOpensTheSourcesHomeApp() = runTest {
+        packageSource.setHome("com.example.home")
 
         assertEquals(
-            home.packageName,
+            "com.example.home",
             systemScreensRepository.googleTvHomeIntent.first()?.`package`,
         )
     }

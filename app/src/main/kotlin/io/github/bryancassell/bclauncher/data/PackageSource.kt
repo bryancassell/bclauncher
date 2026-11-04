@@ -1,6 +1,5 @@
 package io.github.bryancassell.bclauncher.data
 
-import android.content.ComponentName
 import kotlinx.coroutines.flow.Flow
 
 /** The installed apps as the platform reports them. Tests replace it with a fake. */
@@ -9,10 +8,10 @@ interface PackageSource {
     fun tvLauncherActivities(): List<InstalledApp>
 
     /**
-     * The activity a Home intent opens, which on Google TV is Google TV's home, or null when there's none. It reads
-     * PackageManager, so it blocks.
+     * The package of the activity a Home intent opens, which on Google TV is Google TV's launcher, or null when there's
+     * none. It reads PackageManager, so it blocks.
      */
-    fun homeActivity(): ComponentName?
+    fun homePackage(): String?
 
     /**
      * Emits once as soon as it's listening, then each time [tvLauncherActivities] may have changed: when an app is

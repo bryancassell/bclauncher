@@ -2,10 +2,12 @@ package io.github.bryancassell.bclauncher.ui.home
 
 import android.content.Context
 import android.graphics.drawable.ColorDrawable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
@@ -22,6 +24,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -67,22 +70,25 @@ class HomeScreenTest {
         initial: HomeUiState,
         homeButtonMessage: Boolean = false,
         googleTv: Boolean = true,
+        layoutDirection: LayoutDirection = LayoutDirection.Ltr,
     ) {
         uiState = initial
         showsHomeButtonMessage = homeButtonMessage
         showsGoogleTv = googleTv
         composeRule.setContent {
             BcLauncherTheme {
-                HomeScreen(
-                    uiState = uiState,
-                    showsHomeButtonMessage = showsHomeButtonMessage,
-                    onAppClick = { clicked += it },
-                    onRetry = { retries++ },
-                    onUseBcLauncher = { homeButtonSettingsOpened++ },
-                    showsGoogleTv = showsGoogleTv,
-                    onGoogleTv = { googleTvOpened++ },
-                    onSettings = { settingsOpened++ },
-                )
+                CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
+                    HomeScreen(
+                        uiState = uiState,
+                        showsHomeButtonMessage = showsHomeButtonMessage,
+                        onAppClick = { clicked += it },
+                        onRetry = { retries++ },
+                        onUseBcLauncher = { homeButtonSettingsOpened++ },
+                        showsGoogleTv = showsGoogleTv,
+                        onGoogleTv = { googleTvOpened++ },
+                        onSettings = { settingsOpened++ },
+                    )
+                }
             }
         }
     }
@@ -390,6 +396,26 @@ class HomeScreenTest {
         onGoogleTv().assertIsFocused()
         composeRule.pressKeys(listOf(Key.DirectionCenter))
         assertEquals(1, googleTvOpened)
+    }
+
+    @Test
+    fun googleTvTakesFocusWhenThereAreNoAppsRightToLeft() {
+        // The row is mirrored, with Settings at the left.
+        showScreen(HomeUiState.Empty, layoutDirection = LayoutDirection.Rtl)
+
+        onGoogleTv().assertIsFocused()
+    }
+
+    @Test
+    fun settingsKeepsFocusWhenTheLastAppLeaves() {
+        showScreen(HomeUiState.Content(bannerApps(1)))
+        composeRule.pressKeys(listOf(Key.DirectionUp, Key.DirectionRight))
+        onSettings().assertIsFocused()
+
+        // The user removed the last app in Settings and came back.
+        uiState = HomeUiState.Empty
+
+        onSettings().assertIsFocused()
     }
 
     @Test

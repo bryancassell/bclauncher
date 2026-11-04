@@ -90,8 +90,7 @@ class HomeButtonService : AccessibilityService() {
     private val openingGoogleTvHome = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             handler.removeCallbacks(openAfterHandOff)
-            waitingForFront = false
-            handOffGuardUntil = 0L
+            endWaits()
         }
     }
 
@@ -171,8 +170,7 @@ class HomeButtonService : AccessibilityService() {
         val className = event.className?.toString()
         when {
             packageName == home.packageName && className == home.className -> {
-                waitingForFront = false
-                handOffGuardUntil = 0L
+                endWaits()
                 openBcLauncher()
             }
 
@@ -186,11 +184,14 @@ class HomeButtonService : AccessibilityService() {
             packageName == this.packageName -> waitingForFront = false
 
             // Another app, or another of Google TV's activities, such as its panel.
-            else -> {
-                waitingForFront = false
-                handOffGuardUntil = 0L
-            }
+            else -> endWaits()
         }
+    }
+
+    // Ends the wait after connecting and the wait after a hand-off.
+    private fun endWaits() {
+        waitingForFront = false
+        handOffGuardUntil = 0L
     }
 
     private fun frontApplicationWindow(): AccessibilityWindowInfo? =
@@ -202,8 +203,7 @@ class HomeButtonService : AccessibilityService() {
             // A new press ends both waits, so what it opens isn't covered. A second DOWN with no UP between them
             // starts the timing again, so the panel can't open early or twice.
             KeyEvent.ACTION_DOWN -> if (event.repeatCount == 0) {
-                waitingForFront = false
-                handOffGuardUntil = 0L
+                endWaits()
                 armsGuard = false
                 handler.removeCallbacks(longPress)
                 handler.postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())

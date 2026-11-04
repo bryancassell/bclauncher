@@ -151,39 +151,47 @@ class PackageManagerSourceTest {
         assertNull(listedApp("com.example.tv").banner)
     }
 
-    @Test
-    fun homeActivityIsTheOneAHomeIntentOpens() {
-        install("com.example.tvapp")
-        install(GOOGLE_TV, category = Intent.CATEGORY_HOME)
-
-        assertEquals(ComponentName(GOOGLE_TV, "$GOOGLE_TV.MainActivity"), source.homeActivity())
-    }
-
-    @Test
-    fun homeActivityIsNullWithoutAHomeApp() {
-        install("com.example.tvapp")
-
-        assertNull(source.homeActivity())
-    }
-
-    @Test
-    fun homeActivityIsTheAliasTheHomeFilterIsOn() {
-        install(GOOGLE_TV)
-        val alias = ActivityInfo().apply {
-            packageName = GOOGLE_TV
-            name = "$GOOGLE_TV.HomeAlias"
-            targetActivity = "$GOOGLE_TV.MainActivity"
-            exported = true
-            applicationInfo = ApplicationInfo().apply { packageName = GOOGLE_TV }
-        }
-        packageManager.addOrUpdateActivity(alias)
+    /** Installs a package whose activity has a Home filter, with CATEGORY_DEFAULT unless [isDefault] is false. */
+    private fun installHome(packageName: String, isDefault: Boolean = true) {
+        install(packageName)
         packageManager.addIntentFilterForActivity(
-            ComponentName(GOOGLE_TV, alias.name),
-            IntentFilter(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_HOME) },
+            ComponentName(packageName, "$packageName.MainActivity"),
+            IntentFilter(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                if (isDefault) addCategory(Intent.CATEGORY_DEFAULT)
+            },
         )
+    }
 
-        // Started by the alias, as Android starts a Home intent.
-        assertEquals(ComponentName(GOOGLE_TV, alias.name), source.homeActivity())
+    @Test
+    fun homePackageIsTheOneAHomeIntentOpens() {
+        install("com.example.tvapp")
+        installHome(GOOGLE_TV)
+
+        assertEquals(GOOGLE_TV, source.homePackage())
+    }
+
+    @Test
+    fun homePackageIsNullWithoutAHomeApp() {
+        install("com.example.tvapp")
+
+        assertNull(source.homePackage())
+    }
+
+    @Test
+    fun homePackageLeavesOutAHomeActivityThatAHomeIntentCannotStart() {
+        // startActivity matches only activities with CATEGORY_DEFAULT.
+        installHome(GOOGLE_TV, isDefault = false)
+
+        assertNull(source.homePackage())
+    }
+
+    @Test
+    fun homePackageIsNullForAndroidsChooser() {
+        // resolveActivity returns the chooser, in package "android", when Home activities tie with no default set.
+        installHome("android")
+
+        assertNull(source.homePackage())
     }
 
     @Test

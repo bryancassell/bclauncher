@@ -1,6 +1,5 @@
 package io.github.bryancassell.bclauncher.data
 
-import android.content.ComponentName
 import android.content.Intent
 import android.provider.Settings
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -21,20 +20,17 @@ class SystemScreensRepositoryTest {
     private fun TestScope.repository() =
         SystemScreensRepository(packageSource, UnconfinedTestDispatcher(testScheduler))
 
-    private val googleTvHome = ComponentName(
-        "com.google.android.apps.tv.launcherx",
-        "com.google.android.apps.tv.launcherx.home.HomeActivity",
-    )
+    private val googleTv = "com.google.android.apps.tv.launcherx"
 
     @Test
     fun googleTvHomeIntentOpensTheHomeActivitysPackageAsHomeInItsTask() = runTest {
-        packageSource.setHome(googleTvHome)
+        packageSource.setHome(googleTv)
 
         val intent = repository().googleTvHomeIntent.first()
 
         assertEquals(Intent.ACTION_MAIN, intent?.action)
         assertEquals(setOf(Intent.CATEGORY_HOME), intent?.categories)
-        assertEquals(googleTvHome.packageName, intent?.`package`)
+        assertEquals(googleTv, intent?.`package`)
         // Named outright, the activity would start as an ordinary one rather than as Home.
         assertNull(intent?.component)
         assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK, intent?.flags)
@@ -53,11 +49,11 @@ class SystemScreensRepositoryTest {
         }
 
         // As when Google TV's launcher is turned on, another app is installed, and the launcher is turned off.
-        packageSource.setHome(googleTvHome)
+        packageSource.setHome(googleTv)
         packageSource.setApps(fakeApp("YouTube"))
         packageSource.setHome(null)
 
-        assertEquals(listOf(null, googleTvHome.packageName, null), emitted)
+        assertEquals(listOf(null, googleTv, null), emitted)
     }
 
     @Test
