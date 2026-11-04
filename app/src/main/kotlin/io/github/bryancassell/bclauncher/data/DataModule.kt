@@ -38,8 +38,8 @@ object DispatchersModule {
 @InstallIn(SingletonComponent::class)
 object DataStoreModule {
     /**
-     * A singleton, since DataStore fails when two instances in a process use the same file (ARCHITECTURE.md, Stored
-     * data). A file that can't be parsed is replaced with an empty order, so the apps show alphabetically rather than
+     * A singleton, since DataStore fails when two instances in a process use the same file (DataStore 1.3.0)
+     * (ARCHITECTURE.md, Stored data). A file that can't be parsed is replaced with an empty order, so the apps show alphabetically rather than
      * every read failing. That's logged, so a release whose serializer R8 broke shows it in logcat.
      */
     @Provides

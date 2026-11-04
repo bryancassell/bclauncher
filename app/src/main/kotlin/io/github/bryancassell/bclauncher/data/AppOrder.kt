@@ -18,7 +18,8 @@ data class AppOrder(
      * user last moved an app, go after the rest, still alphabetical. Until the user moves one, that's all of them.
      *
      * Apps it names that aren't installed are skipped but stay in it until the order is next saved. After a restore
-     * from backup, Play can reinstall apps after BC Launcher has opened, and each still goes back to its place (#8).
+     * from backup, Play can reinstall apps after BC Launcher has opened, and each still goes back to its place, unless
+     * the user saved an order in the meantime, which keeps only the apps installed then (#8).
      */
     fun arrange(apps: List<InstalledApp>): List<InstalledApp> {
         if (components.isEmpty()) return apps
@@ -54,9 +55,10 @@ data class AppOrder(
  * rather than every read failing.
  */
 internal object AppOrderSerializer : Serializer<AppOrder> {
-    // A key this version doesn't know, written by a later one, would otherwise make the file corrupt, and the handler
-    // would replace the user's order with an empty one. A newer version can come back down when a release is rolled
-    // back under a higher version code.
+    // Json rejects a key it doesn't know by default (kotlinx.serialization 1.12.0). A key written by a later version
+    // would then make the file corrupt, and the handler would replace the user's order with an empty one. A newer
+    // version can come back down when a release is rolled back under a higher version code. The order still reads, but
+    // this version's next save drops the keys it doesn't know.
     private val json = Json { ignoreUnknownKeys = true }
 
     override val defaultValue = AppOrder()
@@ -64,7 +66,8 @@ internal object AppOrderSerializer : Serializer<AppOrder> {
     override suspend fun readFrom(input: InputStream): AppOrder = try {
         json.decodeFromString<AppOrder>(input.readBytes().decodeToString())
     } catch (e: IllegalArgumentException) {
-        // decodeFromString throws SerializationException, a subclass, for text that isn't an AppOrder.
+        // decodeFromString throws SerializationException, a subclass, for text that isn't an AppOrder
+        // (kotlinx.serialization 1.12.0).
         throw CorruptionException("Couldn't read the app order", e)
     }
 

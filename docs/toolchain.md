@@ -79,7 +79,7 @@ R8 removes and renames code that nothing seems to call, so code that's reached o
 1. Clear the log with `adb logcat -b all -c`, so it shows only this check.
 2. Install a signed release on the Google TV emulator, as above. A throwaway keystore is fine for this, with both values set for it in the environment.
 3. Open BC Launcher from the TV's app list, and use what the change touched.
-4. `adb logcat -d -b main,crash | grep -E -A2 'FATAL EXCEPTION|ClassNotFound|NoSuchMethod|NoSuchField|CorruptionException'` shows nothing from `io.github.bryancassell.bclauncher`. It finds errors the app caught and logged as well as crashes, and the lines after each match name its process. `CorruptionException` is logged when a stored file can't be parsed, as when R8 breaks its serializer.
+4. `adb logcat -d -b main,crash | grep -E -A2 'FATAL EXCEPTION|ClassNotFound|NoSuchMethod|NoSuchField| E DataModule'` shows nothing from `io.github.bryancassell.bclauncher`. It finds errors the app caught and logged as well as crashes, and the lines after each match name its process. `DataModule` logs an error when a stored file can't be parsed, as when R8 breaks its serializer. The grep looks for the tag, since R8 renames the exception's class.
 
 When something breaks, `app/build/outputs/mapping/release/usage.txt` lists the code R8 removed, and `retrace` in the SDK's `cmdline-tools` turns a renamed stack trace back into source names using `mapping.txt` from the same build. Keep rules go in `app/src/main/keepRules/*.keep`, each with a comment saying what needs it.
 
@@ -105,6 +105,24 @@ Auto Backup saves BC Launcher's DataStore files (ARCHITECTURE.md, Stored data). 
 4. Open BC Launcher. It shows the data from step 1, and the files hold it again.
 
 A restore only goes to an app signed with the same key as the backup. To check that a release reads stored data, as "Checking a release build" asks after a library update, sign the release with the debug key and install it in step 3 in place of the debug build. `keytool -importkeystore -srckeystore ~/.android/debug.keystore -srcstorepass android -srcalias androiddebugkey -destalias bclauncher -destkeystore <file> -deststorepass <password> -destkeypass <password>` copies the key under the alias the build expects.
+
+`bmgr backupnow` skips the nightly schedule, which puts a backup off while BC Launcher counts as in the foreground, as it does while the Home button service is on. After changing the backup agent or the manifest's backup attributes, also check that the nightly backup runs with the service on:
+
+1. Turn the service on, let a recent backup count as old, and log the backup schedule's decisions:
+   ```
+   adb shell settings put secure enabled_accessibility_services io.github.bryancassell.bclauncher/io.github.bryancassell.bclauncher.HomeButtonService
+   adb shell settings put secure accessibility_enabled 1
+   adb shell settings put secure backup_manager_constants full_backup_interval_milliseconds=60000
+   adb shell setprop log.tag.BackupManagerService VERBOSE
+   ```
+2. `adb shell dumpsys jobscheduler | grep FullBackupJob` shows the nightly job as `JOB #1000/<id>`. Each run backs up only the first package in `dumpsys backup`'s `Full backup queue`, so run it until BC Launcher is next:
+   ```
+   until adb shell dumpsys backup | sed -n '/^Full backup queue/{n;p;}' | grep -q bclauncher; do
+     adb shell cmd jobscheduler run -f android <id>; sleep 3
+   done
+   ```
+3. Clear the log with `adb logcat -b all -c` and run the job once more. After 30 seconds, `adb logcat -d | grep -E 'BackupManagerService|PFTBT'` shows `Calling doFullBackup() on io.github.bryancassell.bclauncher`, not `io.github.bryancassell.bclauncher is busy; deferring`.
+4. Put the settings back with `adb shell settings delete secure backup_manager_constants`, `adb shell settings delete secure enabled_accessibility_services` and `adb shell settings put secure accessibility_enabled 0`.
 
 ## CI
 

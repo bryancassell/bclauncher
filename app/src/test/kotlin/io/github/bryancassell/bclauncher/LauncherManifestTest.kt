@@ -6,10 +6,13 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.ApplicationInfo
 import android.content.pm.FeatureInfo
 import android.content.pm.PackageManager
+import android.os.ParcelFileDescriptor
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -75,6 +78,36 @@ class LauncherManifestTest {
         )
 
         assertEquals(ActivityInfo.LAUNCH_SINGLE_TASK, activity.launchMode)
+    }
+
+    @Test
+    fun autoBackupRunsEvenWhileTheAppIsInTheForeground() {
+        val app = context.packageManager.getApplicationInfo(context.packageName, 0)
+        // privateFlags and its constant are hidden from the SDK, but backupInForeground is the attribute that lets the
+        // nightly backup run while HomeButtonService keeps the app in the foreground (#8).
+        val privateFlags = ApplicationInfo::class.java.getField("privateFlags").getInt(app)
+        val backupInForeground =
+            ApplicationInfo::class.java.getField("PRIVATE_FLAG_BACKUP_IN_FOREGROUND").getInt(null)
+
+        assertEquals(AutoBackupAgent::class.java.name, app.backupAgentName)
+        assertTrue(app.flags and ApplicationInfo.FLAG_ALLOW_BACKUP != 0)
+        assertTrue(app.flags and ApplicationInfo.FLAG_FULL_BACKUP_ONLY != 0)
+        assertTrue(privateFlags and backupInForeground != 0)
+    }
+
+    @Test
+    fun theBackupAgentWritesNoKeyValueState() {
+        val state = File.createTempFile("backup", "state").apply { deleteOnExit() }
+
+        // Auto Backup backs up the files instead, through onFullBackup.
+        ParcelFileDescriptor.open(state, ParcelFileDescriptor.MODE_READ_WRITE).use { newState ->
+            AutoBackupAgent().apply {
+                onBackup(null, null, newState)
+                onRestore(null, 1, newState)
+            }
+        }
+
+        assertEquals(0L, state.length())
     }
 
     @Test

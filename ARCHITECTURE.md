@@ -51,7 +51,7 @@ Blocking calls run on the dispatcher injected as `@IoDispatcher`, so tests can p
 
 ## Stored data
 
-BC Launcher stores its data, such as the order of the apps, with typed DataStore: one `@Serializable` class per file, written as JSON by kotlinx.serialization. Unlike Preferences DataStore, it keeps a list in order. Each file has one `DataStore`, a Hilt singleton, since DataStore fails when two instances in a process use the same file. Auto Backup includes the files, so a reinstall or a new device gets them back, as docs/toolchain.md's "Checking backup and restore" checks (#8).
+BC Launcher stores data, such as the app order, with typed DataStore: one `@Serializable` class per file, in JSON via kotlinx.serialization. Unlike Preferences DataStore, it keeps a list in order. Each file has one `DataStore`, a Hilt singleton, since two in one process can't share a file. Only the main process uses them: `:home_button` would need `MultiProcessDataStoreFactory`. Auto Backup includes the files, so a reinstall or a new device gets them back (docs/toolchain.md, Checking backup and restore) (#8).
 
 ## Tests
 
