@@ -27,8 +27,18 @@
         </intent>
     </queries>
 
+    <!--
+    Backup is on by default. Set anyway, as Android's Auto Backup guide recommends, since the stored
+    data relies on it (ARCHITECTURE.md, Stored data). The agent, fullBackupOnly and
+    backupInForeground let Auto Backup run while HomeButtonService keeps BC Launcher in the
+    foreground, as AutoBackupAgent explains (#8).
+    -->
     <application
         android:name=".BcLauncherApplication"
+        android:allowBackup="true"
+        android:backupAgent=".AutoBackupAgent"
+        android:backupInForeground="true"
+        android:fullBackupOnly="true"
         android:banner="@drawable/banner"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

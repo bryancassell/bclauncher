@@ -79,9 +79,51 @@ R8 removes and renames code that nothing seems to call, so code that's reached o
 1. Clear the log with `adb logcat -b all -c`, so it shows only this check.
 2. Install a signed release on the Google TV emulator, as above. A throwaway keystore is fine for this, with both values set for it in the environment.
 3. Open BC Launcher from the TV's app list, and use what the change touched.
-4. `adb logcat -d -b main,crash | grep -E -A2 'FATAL EXCEPTION|ClassNotFound|NoSuchMethod|NoSuchField'` shows nothing from `io.github.bryancassell.bclauncher`. It finds errors the app caught and logged as well as crashes, and the lines after each match name its process.
+4. `adb logcat -d -b main,crash | grep -E -A2 'FATAL EXCEPTION|ClassNotFound|NoSuchMethod|NoSuchField| E DataModule'` shows nothing from `io.github.bryancassell.bclauncher`. It finds errors the app caught and logged as well as crashes. The lines after a crash name its process, and a logged error's PID shows whose it is. `DataModule` logs an error when a stored file can't be parsed, as when R8 breaks its serializer. The grep looks for the tag, since R8 renames the exception's class.
 
 When something breaks, `app/build/outputs/mapping/release/usage.txt` lists the code R8 removed, and `retrace` in the SDK's `cmdline-tools` turns a renamed stack trace back into source names using `mapping.txt` from the same build. Keep rules go in `app/src/main/keepRules/*.keep`, each with a comment saying what needs it.
+
+## Checking backup and restore
+
+Auto Backup saves BC Launcher's DataStore files (ARCHITECTURE.md, Stored data). After changing the backup rules or where data is stored, check on the Google TV emulator that a reinstall brings the data back. The local transport keeps the backup on the emulator, so no Google account is needed.
+
+1. Install the debug build and give BC Launcher some data. To write the order of the apps by hand, list their components with `adb shell pm query-activities --components -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER`. Write each class name in full, as `ComponentName.flattenToString()` does: `com.android.tv/.TvActivity` is `com.android.tv/com.android.tv.TvActivity`. Then run the following and force-stop BC Launcher, since DataStore keeps what it last read:
+   ```
+   echo '{"components":["<component>","<component>"]}' |
+     adb shell "run-as io.github.bryancassell.bclauncher sh -c 'mkdir -p files/datastore && cat > files/datastore/app_order.json'"
+   ```
+   `adb shell run-as io.github.bryancassell.bclauncher ls -R files` lists the files, and `cat` in place of `ls -R` shows one.
+2. Back up to the local transport:
+   ```
+   adb shell bmgr enable true
+   adb shell bmgr transport com.android.localtransport/.LocalTransport
+   adb shell settings put secure backup_local_transport_parameters is_encrypted=true
+   adb shell bmgr backupnow io.github.bryancassell.bclauncher
+   ```
+   The last command prints `Package io.github.bryancassell.bclauncher with result: Success`. The emulator image has no Google backup transport to switch back to, so backup stays on with the local transport, which only later checks use.
+3. Reinstall, which restores the backup: `adb uninstall io.github.bryancassell.bclauncher`, then `adb install app/build/outputs/apk/debug/app-debug.apk`.
+4. Open BC Launcher. It shows the data from step 1, and the files hold it again.
+
+A restore only goes to an app signed with the same key as the backup. To check that a release reads stored data, as "Checking a release build" asks after a library update, sign the release with the debug key and install it in step 3 in place of the debug build. `keytool -importkeystore -srckeystore ~/.android/debug.keystore -srcstorepass android -srcalias androiddebugkey -destalias bclauncher -destkeystore <file> -deststorepass <password> -destkeypass <password>` copies the key under the alias the build expects.
+
+`bmgr backupnow` skips the nightly schedule, which puts a backup off while BC Launcher counts as in the foreground, as it does while the Home button service is on. After changing the backup agent or the manifest's backup attributes, also check that the nightly backup runs with the service on:
+
+1. Turn the service on, let a recent backup count as old, and log the backup schedule's decisions:
+   ```
+   adb shell settings put secure enabled_accessibility_services io.github.bryancassell.bclauncher/io.github.bryancassell.bclauncher.HomeButtonService
+   adb shell settings put secure accessibility_enabled 1
+   adb shell settings put secure backup_manager_constants full_backup_interval_milliseconds=60000
+   adb shell setprop log.tag.BackupManagerService VERBOSE
+   ```
+2. `adb shell dumpsys jobscheduler | grep FullBackupJob` shows the nightly job as `JOB #1000/<id>`. Each run takes the packages in `dumpsys backup`'s `Full backup queue` in turn and passes over busy ones, so run it until it has reached BC Launcher, which can take over a hundred runs:
+   ```
+   adb logcat -b all -c
+   until adb logcat -d | grep -qE 'doFullBackup\(\) on io.github.bryancassell.bclauncher|bclauncher is busy'; do
+     adb shell cmd jobscheduler run -f android <id>; sleep 3
+   done
+   ```
+3. `adb logcat -d | grep -E 'BackupManagerService|PFTBT'` shows `Calling doFullBackup() on io.github.bryancassell.bclauncher`, not `io.github.bryancassell.bclauncher is busy; deferring`. A forced run doesn't wait for the TV to be idle, so with BC Launcher on screen, the backup closes it.
+4. Put the settings back with `adb shell settings delete secure backup_manager_constants`, `adb shell settings delete secure enabled_accessibility_services`, `adb shell settings put secure accessibility_enabled 0` and `adb shell setprop log.tag.BackupManagerService ''`.
 
 ## CI
 
