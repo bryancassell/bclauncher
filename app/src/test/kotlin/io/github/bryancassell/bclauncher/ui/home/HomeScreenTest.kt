@@ -21,6 +21,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -61,6 +62,9 @@ class HomeScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
 
+    // Sets the screen's content, and recreates it with its saved state as an activity recreation does.
+    private val restoration = StateRestorationTester(composeRule)
+
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     private val clicked = mutableListOf<InstalledApp>()
@@ -83,7 +87,7 @@ class HomeScreenTest {
         uiState = initial
         showsHomeButtonMessage = homeButtonMessage
         showsGoogleTv = googleTv
-        composeRule.setContent {
+        restoration.setContent {
             BcLauncherTheme {
                 CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
                     HomeScreen(
@@ -123,7 +127,7 @@ class HomeScreenTest {
     // the same compositeKeyHash, as two tiles' nodes do on a TV once the grid reuses one app's node for another (#28).
     private fun appsWithTheSameHash() = listOf("Aa", "BB").map {
         fakeApp("Twin $it", packageName = "com.example.$it")
-    }
+    }.also { (aa, bb) -> assertEquals(aa.component.hashCode(), bb.component.hashCode()) }
 
     // Scrolls the grid to a focused tile as a TV does, which puts its row 30% of the way down. Compose Foundation picks
     // that for a device with FEATURE_LEANBACK, and Robolectric's TV qualifiers don't add the feature.
@@ -483,6 +487,18 @@ class HomeScreenTest {
         showsHomeButtonMessage = false
 
         composeRule.onTile("App 1").assertIsFocused()
+    }
+
+    @Test
+    fun focusReturnsToItsTileAfterTheScreenIsRecreatedBesideATileWithTheSameHash() {
+        val (aa, bb) = appsWithTheSameHash()
+        showScreen(HomeUiState.Content(listOf(bb, aa)))
+        composeRule.pressKeys(listOf(Key.DirectionRight))
+        composeRule.onTile("Twin Aa").assertIsFocused()
+
+        restoration.emulateSavedInstanceStateRestore()
+
+        composeRule.onTile("Twin Aa").assertIsFocused()
     }
 
     @Test

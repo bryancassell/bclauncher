@@ -525,8 +525,9 @@ private class GridFocus {
      * frame after the list changes.
      */
     fun restore(): Boolean {
-        val app = app?.takeIf { app -> shownApps.any { it.component == app } } ?: return false
-        return tiles[app]?.requestFocus() == true
+        val last = app ?: return false
+        if (shownApps.none { it.component == last }) return false
+        return tiles[last]?.requestFocus() == true
     }
 
     /** Called before [grid] lays out [apps], with the [target] that [targetIn] picked in them. */
