@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.ApplicationInfo
 import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
@@ -39,6 +40,9 @@ class PackageManagerSource @Inject constructor(@ApplicationContext private val c
                     // The activity's banner, else the application's, else null.
                     banner = activity.loadBanner(packageManager),
                     icon = resolveInfo.loadIcon(packageManager),
+                    // An updated system app keeps FLAG_SYSTEM and gets FLAG_UPDATED_SYSTEM_APP too.
+                    isSystemApp =
+                        activity.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0,
                 )
             }
     }

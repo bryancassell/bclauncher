@@ -9,6 +9,7 @@ import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,7 +28,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -39,6 +43,12 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
@@ -47,6 +57,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
 import androidx.tv.material3.Card
@@ -63,7 +75,10 @@ private const val TAG = "HomeScreen"
 private val HORIZONTAL_MARGIN = 58.dp
 private val VERTICAL_MARGIN = 28.dp
 
-/** The launcher's home screen: the installed apps in a grid, where selecting one opens it. */
+/**
+ * The launcher's home screen: the installed apps in a grid, where selecting one opens it and holding Select on one
+ * opens its menu.
+ */
 @Composable
 fun HomeScreen(modifier: Modifier = Modifier, viewModel: HomeViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -72,25 +87,37 @@ fun HomeScreen(modifier: Modifier = Modifier, viewModel: HomeViewModel = hiltVie
     val resources = LocalResources.current
     // Back does nothing (PRD.md, Design decisions).
     BackHandler {}
+
+    // The screen starts other apps' activities itself, with the activity's context (ARCHITECTURE.md, Layers and
+    // packages), and says so when one doesn't open. The message is made only then.
+    fun start(intent: Intent, failure: () -> String): Boolean =
+        context.startActivitySafely(intent).also { started ->
+            if (!started) Toast.makeText(context, failure(), Toast.LENGTH_SHORT).show()
+        }
     HomeScreen(
         uiState = uiState,
         showsHomeButtonMessage = showsHomeButtonMessage,
-        // The screen starts the app itself, with the activity's context (ARCHITECTURE.md, Layers and packages).
         onAppClick = { app ->
-            if (!context.startActivitySafely(app.launchIntent)) {
-                val message = resources.getString(R.string.app_did_not_open, app.label)
-                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                viewModel.onLaunchFailed()
+            val started =
+                start(app.launchIntent) {
+                    resources.getString(R.string.app_did_not_open, app.label)
+                }
+            if (!started) viewModel.onLaunchFailed()
+        },
+        onAppSettingsClick = { app ->
+            start(app.appSettingsIntent) {
+                resources.getString(R.string.app_settings_did_not_open, app.label)
+            }
+        },
+        onUninstallClick = { app ->
+            start(app.uninstallIntent) {
+                resources.getString(R.string.uninstall_did_not_open, app.label)
             }
         },
         onRetry = viewModel::retry,
         onUseBcLauncher = {
-            if (!context.startActivitySafely(viewModel.homeButtonSettingsIntent)) {
-                Toast.makeText(
-                    context,
-                    R.string.home_button_settings_did_not_open,
-                    Toast.LENGTH_SHORT,
-                ).show()
+            start(viewModel.homeButtonSettingsIntent) {
+                resources.getString(R.string.home_button_settings_did_not_open)
             }
         },
         modifier = modifier,
@@ -98,9 +125,11 @@ fun HomeScreen(modifier: Modifier = Modifier, viewModel: HomeViewModel = hiltVie
 }
 
 /**
- * Whether [intent]'s activity started. A tile can outlive its activity: an update can remove it
- * (ActivityNotFoundException), or stop exporting it or add a permission to it (SecurityException), before the reload
- * drops the tile. Android's own launcher, Launcher3, catches and logs both in its startActivitySafely.
+ * Whether [intent]'s activity started. Android's own launcher, Launcher3, catches and logs the same two exceptions in
+ * its startActivitySafely:
+ * - ActivityNotFoundException, when nothing handles the intent. A tile can outlive its activity, since an update can
+ *   remove it before the reload drops the tile, and a device may have no screen for a Settings action.
+ * - SecurityException, when an update stopped exporting a tile's activity or added a permission to it.
  */
 internal fun Context.startActivitySafely(intent: Intent): Boolean = try {
     startActivity(intent)
@@ -122,6 +151,8 @@ internal fun HomeScreen(
     uiState: HomeUiState,
     showsHomeButtonMessage: Boolean,
     onAppClick: (InstalledApp) -> Unit,
+    onAppSettingsClick: (InstalledApp) -> Unit,
+    onUninstallClick: (InstalledApp) -> Unit,
     onRetry: () -> Unit,
     onUseBcLauncher: () -> Unit,
     modifier: Modifier = Modifier,
@@ -138,6 +169,8 @@ internal fun HomeScreen(
                     is HomeUiState.Content -> AppGrid(
                         uiState.apps,
                         onAppClick,
+                        onAppSettingsClick,
+                        onUninstallClick,
                         showsHomeButtonMessage,
                     )
 
@@ -197,15 +230,28 @@ private fun HomeButtonMessage(onUseBcLauncher: () -> Unit, takesFocus: Boolean) 
  * Saving once before an app starts isn't enough: saveFocusedChild() saves the tile focused when it's called, and the
  * restore after a recreation doesn't save it again (Compose UI 1.12.1's FocusRestorer.kt). So a tile reached with the
  * D-pad since then, or anything after a second recreation, went back to the first tile on the Google TV emulator.
+ *
+ * Holding Select on a tile opens its app's menu. It's saved too, so it's still open after a configuration change
+ * recreates the activity. Otherwise it closes when the screen stops, so Home or coming back from another app shows the
+ * grid. It also closes when its app leaves the list, as after the user uninstalls it, and doesn't open again if the app
+ * comes back.
  */
 @Composable
 private fun AppGrid(
     apps: List<InstalledApp>,
     onAppClick: (InstalledApp) -> Unit,
+    onAppSettingsClick: (InstalledApp) -> Unit,
+    onUninstallClick: (InstalledApp) -> Unit,
     messageShown: Boolean,
 ) {
     val grid = remember { FocusRequester() }
     val focus = remember { GridFocus() }
+    var menuFor by rememberSaveable { mutableStateOf<ComponentName?>(null) }
+    val menuPress = remember { MenuPress() }
+    val activity = LocalActivity.current
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if (activity?.isChangingConfigurations != true) menuFor = null
+    }
     val state = rememberLazyGridState()
     // Picked during composition, so the tiles see it in the first layout of the new list. Tiles already composed are
     // composed again only when what their content captures changes, so one picked in the SideEffect reached them a
@@ -220,7 +266,8 @@ private fun AppGrid(
             .fillMaxSize()
             .onFocusChanged { focus.inGrid = it.hasFocus }
             .focusRequester(grid)
-            .focusRestorer(),
+            .focusRestorer()
+            .onPreviewKeyEvent { menuPress.onKeyEvent(it) },
         contentPadding = PaddingValues(horizontal = HORIZONTAL_MARGIN, vertical = VERTICAL_MARGIN),
         verticalArrangement = Arrangement.spacedBy(20.dp),
         horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -230,7 +277,11 @@ private fun AppGrid(
             val tile = remember { FocusRequester() }
             AppTile(
                 app = app,
-                onClick = { onAppClick(app) },
+                onClick = { if (!menuPress.endsWithClick()) onAppClick(app) },
+                onLongClick = {
+                    menuPress.start()
+                    menuFor = app.component
+                },
                 modifier = Modifier
                     .focusRequester(tile)
                     .onFocusChanged {
@@ -260,7 +311,54 @@ private fun AppGrid(
     LaunchedEffect(messageShown) {
         if (!grid.restoreFocusedChild()) grid.requestFocus()
     }
+    val menuApp = apps.find { it.component == menuFor }
+    if (menuApp != null) {
+        AppMenu(
+            app = menuApp,
+            onOptionClick = { option ->
+                menuFor = null
+                when (option) {
+                    AppOption.Launch -> onAppClick(menuApp)
+                    AppOption.AppSettings -> onAppSettingsClick(menuApp)
+                    AppOption.Uninstall -> onUninstallClick(menuApp)
+                }
+            },
+            onDismiss = { menuFor = null },
+        )
+    }
+    LaunchedEffect(apps) {
+        if (apps.none { it.component == menuFor }) menuFor = null
+    }
 }
+
+/**
+ * The long press that opened the menu, until Select goes down again, so the click that ends it doesn't open the app.
+ *
+ * On a TV the menu's window takes focus while Select is still held, and the grid gets a cancelled release, which resets
+ * the Card's long press without a click. If the menu closes before Select is let go, as when the user presses Back
+ * first, the rest of the press can reach the grid again. tv-material's Card then clicks on the release, since its long
+ * press was reset (handleDPadEnter in tv-material 1.1.0).
+ */
+private class MenuPress {
+    private var open = false
+
+    fun start() {
+        open = true
+    }
+
+    /** Ends the long press when Select goes down afresh. Never consumes [event]. */
+    fun onKeyEvent(event: KeyEvent): Boolean {
+        val freshPress = event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0
+        if (freshPress && event.key in SELECT_KEYS) open = false
+        return false
+    }
+
+    /** Whether a tile's click is the end of the long press, which it then ends. */
+    fun endsWithClick(): Boolean = open.also { open = false }
+}
+
+// The keys tv-material's Card clicks on (SurfaceImpl.kt's AcceptableEnterClickKeys in tv-material 1.1.0).
+private val SELECT_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter)
 
 /** Which tile has focus, kept so that a new list leaves focus on a tile on screen. */
 private class GridFocus {
@@ -352,8 +450,13 @@ private class GridFocus {
  * a banner already shows.
  */
 @Composable
-private fun AppTile(app: InstalledApp, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Card(onClick = onClick, modifier = modifier.aspectRatio(16f / 9f)) {
+private fun AppTile(
+    app: InstalledApp,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(onClick = onClick, onLongClick = onLongClick, modifier = modifier.aspectRatio(16f / 9f)) {
         val banner = app.banner
         if (banner != null) {
             Image(
