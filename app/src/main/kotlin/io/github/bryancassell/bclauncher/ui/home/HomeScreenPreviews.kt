@@ -43,6 +43,9 @@ private fun HomeScreenPreview() {
             onUninstallClick = {},
             onRetry = {},
             onUseBcLauncher = {},
+            showsGoogleTv = true,
+            onGoogleTv = {},
+            onSettings = {},
         )
     }
 }
@@ -59,6 +62,9 @@ private fun EmptyHomeScreenPreview() {
             onUninstallClick = {},
             onRetry = {},
             onUseBcLauncher = {},
+            showsGoogleTv = true,
+            onGoogleTv = {},
+            onSettings = {},
         )
     }
 }

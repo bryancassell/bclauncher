@@ -37,6 +37,9 @@ class DataModuleTest {
     @Inject
     lateinit var accessibilitySource: FakeAccessibilitySource
 
+    @Inject
+    lateinit var systemScreensRepository: SystemScreensRepository
+
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     @Before
@@ -58,5 +61,15 @@ class DataModuleTest {
         accessibilitySource.setEnabledServices(homeButtonService(context))
 
         assertTrue(homeButtonRepository.isOn.first())
+    }
+
+    @Test
+    fun injectedSystemScreensRepositoryOpensTheSourcesHomeApp() = runTest {
+        packageSource.setHome("com.example.home")
+
+        assertEquals(
+            "com.example.home",
+            systemScreensRepository.googleTvHomeIntent.first()?.`package`,
+        )
     }
 }

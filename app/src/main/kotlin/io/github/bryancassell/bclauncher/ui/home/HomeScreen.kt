@@ -15,8 +15,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -59,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
 import androidx.tv.material3.Card
@@ -71,9 +74,19 @@ import kotlin.math.roundToInt
 
 private const val TAG = "HomeScreen"
 
-// The side and the top and bottom margins in Android's TV layout guide, which the grid and the message above it share.
+// The side and the top and bottom margins in Android's TV layout guide, which the buttons at the top, the message and
+// the grid share.
 private val HORIZONTAL_MARGIN = 58.dp
 private val VERTICAL_MARGIN = 28.dp
+
+/**
+ * Between the buttons at the top and what's below them. It keeps five rows of tiles, the 30 apps that fit on screen
+ * (PRD.md, Design decisions), above the bottom margin of a 540 dp screen: 28 + 40 + 12 + 5 × 70 + 4 × 20 = 510 dp of
+ * the 512 dp inside it. A 69.75 dp tile is drawn 70 dp tall at the 2x density of a 1080p TV, and 15 dp put the last
+ * row 1 dp into the margin. That's at the default text size: larger text makes the buttons taller, and the last row
+ * then reaches into the margin, though it stays on screen.
+ */
+private val GAP_BELOW = 12.dp
 
 /**
  * The launcher's home screen: the installed apps in a grid, where selecting one opens it and holding Select on one
@@ -83,8 +96,10 @@ private val VERTICAL_MARGIN = 28.dp
 fun HomeScreen(modifier: Modifier = Modifier, viewModel: HomeViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val showsHomeButtonMessage by viewModel.showsHomeButtonMessage.collectAsStateWithLifecycle()
+    val googleTvHomeIntent by viewModel.googleTvHomeIntent.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val resources = LocalResources.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     // Back does nothing (PRD.md, Design decisions).
     BackHandler {}
 
@@ -120,6 +135,21 @@ fun HomeScreen(modifier: Modifier = Modifier, viewModel: HomeViewModel = hiltVie
                 resources.getString(R.string.home_button_settings_did_not_open)
             }
         },
+        showsGoogleTv = googleTvHomeIntent != null,
+        onGoogleTv = {
+            googleTvHomeIntent?.let { intent ->
+                viewModel.onOpeningGoogleTvHome {
+                    // The broadcast can come back after the user has opened an app, or after an earlier press has
+                    // opened Google TV's home, and neither should be covered.
+                    if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                        start(intent) { resources.getString(R.string.google_tv_did_not_open) }
+                    }
+                }
+            }
+        },
+        onSettings = {
+            start(viewModel.settingsIntent) { resources.getString(R.string.settings_did_not_open) }
+        },
         modifier = modifier,
     )
 }
@@ -143,8 +173,10 @@ internal fun Context.startActivitySafely(intent: Intent): Boolean = try {
 }
 
 /**
- * Shows nothing while the apps load, since a load takes a fraction of a second and an indicator would only flash. The
- * message offering to make Home open BC Launcher goes above the apps (PRD.md, Design decisions).
+ * Shows only the Google TV and Settings buttons while the apps load, since a load takes a fraction of a second and an
+ * indicator would only flash. The buttons go at the top right, where Up from the first row reaches them and they don't
+ * move as apps come and go. The message offering to make Home open BC Launcher goes between them and the apps (PRD.md,
+ * Design decisions).
  */
 @Composable
 internal fun HomeScreen(
@@ -155,10 +187,19 @@ internal fun HomeScreen(
     onUninstallClick: (InstalledApp) -> Unit,
     onRetry: () -> Unit,
     onUseBcLauncher: () -> Unit,
+    showsGoogleTv: Boolean,
+    onGoogleTv: () -> Unit,
+    onSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(modifier = modifier.fillMaxSize()) {
         Column {
+            SystemScreenButtons(
+                showsGoogleTv,
+                onGoogleTv,
+                onSettings,
+                takesFocus = uiState == HomeUiState.Empty && !showsHomeButtonMessage,
+            )
             if (showsHomeButtonMessage) {
                 HomeButtonMessage(onUseBcLauncher, takesFocus = uiState == HomeUiState.Empty)
             }
@@ -184,9 +225,76 @@ internal fun HomeScreen(
 }
 
 /**
+ * The buttons that open Google TV's home and device settings, at the top right inside the grid's margins. Google TV's
+ * is left out when [showsGoogleTv] is false. Focus starts on the apps, and Up from the first row, or from the message,
+ * reaches them.
+ *
+ * With no apps and no message, the first button [takesFocus], since nothing else can, so Select presses it. It takes
+ * focus again when the message leaves, but not from the other button the user is on, as when they come back from
+ * Settings having removed the last app. When Google TV's button arrives while the buttons take focus, as when the apps
+ * load before Google TV's home is found, it takes focus. When it leaves with focus on it, as when Google TV's launcher
+ * is turned off, Settings does. A focused button that leaves, like the message's, leaves focus nowhere, for the reason
+ * AppGrid gives.
+ *
+ * Each button has its own FocusRequester: requestFocus() on the row would enter it as if moving Right from its top
+ * left, whatever the layout direction, so in a right-to-left language it would focus Settings (Compose UI 1.12.1's
+ * TwoDimensionalFocusSearch.kt, b/244528858).
+ */
+@Composable
+private fun SystemScreenButtons(
+    showsGoogleTv: Boolean,
+    onGoogleTv: () -> Unit,
+    onSettings: () -> Unit,
+    takesFocus: Boolean,
+) {
+    val googleTv = remember { FocusRequester() }
+    val settings = remember { FocusRequester() }
+    var googleTvFocused by remember { mutableStateOf(false) }
+    var settingsFocused by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = HORIZONTAL_MARGIN, top = VERTICAL_MARGIN, end = HORIZONTAL_MARGIN),
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+    ) {
+        if (showsGoogleTv) {
+            Button(
+                onClick = onGoogleTv,
+                modifier = Modifier
+                    .focusRequester(googleTv)
+                    .onFocusChanged { googleTvFocused = it.isFocused },
+            ) {
+                Text(text = stringResource(R.string.google_tv))
+            }
+        }
+        Button(
+            onClick = onSettings,
+            modifier = Modifier
+                .focusRequester(settings)
+                .onFocusChanged { settingsFocused = it.isFocused },
+        ) {
+            Text(text = stringResource(R.string.settings))
+        }
+    }
+    val first = if (showsGoogleTv) googleTv else settings
+    LaunchedEffect(takesFocus) {
+        if (takesFocus && !googleTvFocused && !settingsFocused) first.requestFocus()
+    }
+    // Read while composing, before the button leaves: clearing its focus as it leaves reports it unfocused.
+    val googleTvLeftWithFocus = !showsGoogleTv && googleTvFocused
+    LaunchedEffect(showsGoogleTv) {
+        if (showsGoogleTv && takesFocus) {
+            googleTv.requestFocus()
+        } else if (googleTvLeftWithFocus) {
+            settings.requestFocus()
+        }
+    }
+}
+
+/**
  * Says that Home opens Google TV, with a button that opens Accessibility settings, inside the grid's side margins.
  * Focus starts on the apps, so Select still opens one, and Up from the first row reaches the button. With no apps, the
- * button [takesFocus], since nothing else can, so Select presses it.
+ * button [takesFocus] rather than those above it, since it does what the message asks, so Select presses it.
  */
 @Composable
 private fun HomeButtonMessage(onUseBcLauncher: () -> Unit, takesFocus: Boolean) {
@@ -194,7 +302,7 @@ private fun HomeButtonMessage(onUseBcLauncher: () -> Unit, takesFocus: Boolean) 
     Column(
         modifier = Modifier.padding(
             start = HORIZONTAL_MARGIN,
-            top = VERTICAL_MARGIN,
+            top = GAP_BELOW,
             end = HORIZONTAL_MARGIN,
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -217,8 +325,8 @@ private fun HomeButtonMessage(onUseBcLauncher: () -> Unit, takesFocus: Boolean) 
 }
 
 /**
- * Six 124 dp tiles to a row (PRD.md, Design decisions), inside 58 dp margins at the sides and 28 dp at the top and
- * bottom, with 20 dp between tiles. These are the margins in Android's TV layout guide.
+ * Six 124 dp tiles to a row (PRD.md, Design decisions), inside 58 dp margins at the sides and 28 dp at the bottom, with
+ * 20 dp between tiles. These are the margins in Android's TV layout guide. The top is the gap below the buttons.
  *
  * Focus starts on the first tile. Starting another app leaves focus where it was, since the window losing focus
  * doesn't clear it. The focused tile is also saved each time focus moves, so focus returns to it after the activity
@@ -268,7 +376,12 @@ private fun AppGrid(
             .focusRequester(grid)
             .focusRestorer()
             .onPreviewKeyEvent { menuPress.onKeyEvent(it) },
-        contentPadding = PaddingValues(horizontal = HORIZONTAL_MARGIN, vertical = VERTICAL_MARGIN),
+        contentPadding = PaddingValues(
+            start = HORIZONTAL_MARGIN,
+            top = GAP_BELOW,
+            end = HORIZONTAL_MARGIN,
+            bottom = VERTICAL_MARGIN,
+        ),
         verticalArrangement = Arrangement.spacedBy(20.dp),
         horizontalArrangement = Arrangement.spacedBy(20.dp),
     ) {
@@ -365,7 +478,7 @@ private class GridFocus {
     /** The app whose tile last had focus. */
     var app: ComponentName? = null
 
-    /** Whether a tile has focus, rather than the button in the message above the grid. */
+    /** Whether a tile has focus, rather than a button above the grid. */
     var inGrid = false
 
     /** The app whose tile takes the focused tile's place, until that tile takes focus. */
@@ -374,8 +487,8 @@ private class GridFocus {
     private var shownApps: List<InstalledApp> = emptyList()
 
     /**
-     * The tile that has focus, or is to take it. Null when focus is on the button in the message above the grid, so a
-     * new list leaves focus there.
+     * The tile that has focus, or is to take it. Null when focus is on a button above the grid, so a new list leaves
+     * focus there.
      */
     private val focused: ComponentName?
         get() = pending ?: app.takeIf { inGrid }

@@ -26,6 +26,12 @@ class FakePackageSource @Inject constructor() : PackageSource {
 
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
 
+    @Volatile
+    private var home: String? = null
+
+    @Volatile
+    private var homeFailure: Throwable? = null
+
     /** How many times the apps were read. */
     val loads: Int get() = loadCount.get()
 
@@ -42,6 +48,25 @@ class FakePackageSource @Inject constructor() : PackageSource {
         } finally {
             runningLoads.decrementAndGet()
         }
+    }
+
+    override fun homePackage(): String? {
+        homeFailure?.let { throw it }
+        return home
+    }
+
+    /**
+     * Makes [packageName] the package of the activity a Home intent opens, or none when it's null, and reports a
+     * change, as turning Google TV's launcher on or off would.
+     */
+    fun setHome(packageName: String?) {
+        home = packageName
+        listeners.forEach { it() }
+    }
+
+    /** Makes finding the Home activity throw [error], as PackageManager might. */
+    fun failFindingHome(error: Throwable) {
+        homeFailure = error
     }
 
     // A callbackFlow, like PackageManagerSource's, so a change goes straight into the channel the repository reads.
