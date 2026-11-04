@@ -432,9 +432,9 @@ class HomeScreenTest {
     @Test
     fun downFromUseBcLauncherReturnsToTheTileFocusLeft() {
         val (aa, bb) = appsWithTheSameHash()
-        // Twin BB's tile comes first, so it's the first with the same hash.
-        showScreen(HomeUiState.Content(listOf(bb) + bannerApps(4) + aa), homeButtonMessage = true)
-        composeRule.pressKeys(List(5) { Key.DirectionRight } + Key.DirectionUp)
+        // Twin BB's tile is below the button and comes first, so it's the first with the same hash too.
+        showScreen(HomeUiState.Content(listOf(bb, aa) + bannerApps(4)), homeButtonMessage = true)
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionUp))
         onUseBcLauncher().assertIsFocused()
 
         composeRule.pressKeys(listOf(Key.DirectionDown))
@@ -445,10 +445,10 @@ class HomeScreenTest {
     @Test
     fun downFromUseBcLauncherReachesTheFirstRowOnceTheTileFocusLeftHasGone() {
         val (aa, bb) = appsWithTheSameHash()
-        // Twin Aa ends the first row, and Twin BB starts the fourth.
-        val apps = bannerApps(5) + aa + bannerApps(12, "More") + bb
+        // Twin Aa is second in the first row, and Twin BB starts the fourth.
+        val apps = bannerApps(1) + aa + bannerApps(16, "More") + bb
         showScreen(HomeUiState.Content(apps), homeButtonMessage = true)
-        composeRule.pressKeys(List(5) { Key.DirectionRight } + Key.DirectionUp)
+        composeRule.pressKeys(listOf(Key.DirectionRight, Key.DirectionUp))
         onUseBcLauncher().assertIsFocused()
         uiState = HomeUiState.Content(apps - aa)
 
