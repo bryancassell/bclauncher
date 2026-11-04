@@ -1,13 +1,22 @@
 package io.github.bryancassell.bclauncher.data
 
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.core.DataStoreFactory
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import androidx.datastore.dataStoreFile
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Qualifier
+import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /** Qualifies the dispatcher for blocking calls (ARCHITECTURE.md, Dependency injection). */
 @Qualifier
@@ -20,6 +29,26 @@ object DispatchersModule {
     @Provides
     @IoDispatcher
     fun ioDispatcher(): CoroutineDispatcher = Dispatchers.IO
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+object DataStoreModule {
+    /**
+     * A singleton (ARCHITECTURE.md, Stored data). A file that can't be parsed is replaced with an empty order, so the
+     * apps show alphabetically rather than not at all.
+     */
+    @Provides
+    @Singleton
+    fun appOrderStore(
+        @ApplicationContext context: Context,
+        @IoDispatcher ioDispatcher: CoroutineDispatcher,
+    ): DataStore<AppOrder> = DataStoreFactory.create(
+        serializer = AppOrderSerializer,
+        corruptionHandler = ReplaceFileCorruptionHandler { AppOrder() },
+        scope = CoroutineScope(ioDispatcher + SupervisorJob()),
+        produceFile = { context.dataStoreFile("app_order.json") },
+    )
 }
 
 /**

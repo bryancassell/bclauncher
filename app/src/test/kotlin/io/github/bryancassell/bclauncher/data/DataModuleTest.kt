@@ -1,6 +1,7 @@
 package io.github.bryancassell.bclauncher.data
 
 import android.content.Context
+import androidx.datastore.dataStoreFile
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dagger.hilt.android.testing.HiltAndroidRule
@@ -17,7 +18,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
-/** The app's Hilt graph builds the repositories with the IO dispatcher and, in tests, the fake sources. */
+/**
+ * The app's Hilt graph builds the repositories with the IO dispatcher, the app's DataStore files and, in tests, the
+ * fake sources.
+ */
 @HiltAndroidTest
 @Config(application = HiltTestApplication::class)
 @RunWith(AndroidJUnit4::class)
@@ -51,6 +55,26 @@ class DataModuleTest {
         val apps = repository.apps.first()
 
         assertEquals(listOf("YouTube"), apps.map { it.label })
+    }
+
+    @Test
+    fun injectedRepositorySavesTheOrderInDataStoresDirectory() = runTest {
+        val apple = fakeApp("Apple")
+        val youTube = fakeApp("YouTube")
+        packageSource.setApps(apple, youTube)
+
+        repository.saveOrder(listOf(youTube.component, apple.component))
+
+        assertEquals(listOf("YouTube", "Apple"), repository.apps.first().map { it.label })
+        assertTrue(context.filesDir.resolve("datastore/app_order.json").exists())
+    }
+
+    @Test
+    fun injectedRepositoryListsAppsByLabelWhenTheOrderFileIsCorrupt() = runTest {
+        packageSource.setApps(fakeApp("YouTube"), fakeApp("Apple"))
+        context.dataStoreFile("app_order.json").apply { parentFile?.mkdirs() }.writeText("not json")
+
+        assertEquals(listOf("Apple", "YouTube"), repository.apps.first().map { it.label })
     }
 
     @Test

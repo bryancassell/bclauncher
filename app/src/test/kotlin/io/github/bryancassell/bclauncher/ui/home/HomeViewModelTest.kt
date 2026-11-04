@@ -7,7 +7,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.bryancassell.bclauncher.MainDispatcherRule
+import io.github.bryancassell.bclauncher.data.AppOrder
 import io.github.bryancassell.bclauncher.data.FakeAccessibilitySource
+import io.github.bryancassell.bclauncher.data.FakeDataStore
 import io.github.bryancassell.bclauncher.data.FakePackageSource
 import io.github.bryancassell.bclauncher.data.HomeButtonRepository
 import io.github.bryancassell.bclauncher.data.InstalledAppsRepository
@@ -40,7 +42,12 @@ class HomeViewModelTest {
     // dispatcher. A field initializer would run first, and viewModelScope would take the real main dispatcher.
     private val viewModel by lazy {
         HomeViewModel(
-            InstalledAppsRepository(context, packageSource, mainDispatcherRule.dispatcher),
+            InstalledAppsRepository(
+                context,
+                packageSource,
+                FakeDataStore(AppOrder()),
+                mainDispatcherRule.dispatcher,
+            ),
             HomeButtonRepository(context, accessibilitySource),
         )
     }

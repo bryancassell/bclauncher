@@ -3,6 +3,7 @@ package io.github.bryancassell.bclauncher.data
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import java.io.IOException
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +20,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -27,10 +29,69 @@ import org.junit.runner.RunWith
 class InstalledAppsRepositoryTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val packageSource = FakePackageSource()
+    private val orderStore = FakeDataStore(AppOrder())
     private val defaultLocale = Locale.getDefault()
 
-    private fun TestScope.repository() =
-        InstalledAppsRepository(context, packageSource, UnconfinedTestDispatcher(testScheduler))
+    private fun TestScope.repository() = InstalledAppsRepository(
+        context,
+        packageSource,
+        orderStore,
+        UnconfinedTestDispatcher(testScheduler),
+    )
+
+    @Test
+    fun listsAppsInTheSavedOrderWithNewOnesAtTheEnd() = runTest {
+        packageSource.setApps(fakeApp("Apple"), fakeApp("Netflix"), fakeApp("YouTube"))
+        repository().saveOrder(listOf(fakeApp("YouTube").component, fakeApp("Apple").component))
+
+        val apps = repository().apps.first()
+
+        assertEquals(listOf("YouTube", "Apple", "Netflix"), apps.map { it.label })
+    }
+
+    @Test
+    fun savesEachAppsComponent() = runTest {
+        val youTube = fakeApp("YouTube").component
+
+        repository().saveOrder(listOf(youTube))
+
+        assertEquals(AppOrder(listOf(youTube.flattenToString())), orderStore.current)
+    }
+
+    @Test
+    fun updatesWhenTheOrderIsSaved() = runTest {
+        packageSource.setApps(fakeApp("Apple"), fakeApp("YouTube"))
+        val repository = repository()
+        val emissions = mutableListOf<List<String>>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            repository.apps.collect { apps -> emissions += apps.map { it.label } }
+        }
+
+        repository.saveOrder(listOf(fakeApp("YouTube").component, fakeApp("Apple").component))
+
+        assertEquals(listOf(listOf("Apple", "YouTube"), listOf("YouTube", "Apple")), emissions)
+        assertEquals(1, packageSource.loads)
+    }
+
+    @Test
+    fun listsAppsByLabelWhenTheOrderCannotBeRead() = runTest {
+        packageSource.setApps(fakeApp("YouTube"), fakeApp("Apple"))
+        orderStore.updateData { AppOrder(listOf(fakeApp("YouTube").component.flattenToString())) }
+        orderStore.readError = IOException("Disk error")
+
+        val apps = repository().apps.first()
+
+        assertEquals(listOf("Apple", "YouTube"), apps.map { it.label })
+    }
+
+    @Test
+    fun passesOnOtherErrorsReadingTheOrder() = runTest {
+        orderStore.readError = IllegalStateException("Not an IOException")
+
+        val error = runCatching { repository().apps.first() }.exceptionOrNull()
+
+        assertTrue(error is IllegalStateException)
+    }
 
     @Test
     fun listsAppsByLabelIgnoringCase() = runTest {
@@ -82,7 +143,7 @@ class InstalledAppsRepositoryTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val emissions = mutableListOf<List<String>>()
         backgroundScope.launch(dispatcher) {
-            InstalledAppsRepository(context, packageSource, dispatcher).apps
+            InstalledAppsRepository(context, packageSource, orderStore, dispatcher).apps
                 .collect { apps -> emissions += apps.map { it.label } }
         }
         runCurrent()
@@ -102,7 +163,7 @@ class InstalledAppsRepositoryTest {
     // Real threads, since a load blocks its thread and only overlaps another on a different one.
     @Test
     fun aLoadWaitsForOneACancelledCollectionLeftRunning() = runBlocking {
-        val repository = InstalledAppsRepository(context, packageSource, Dispatchers.IO)
+        val repository = InstalledAppsRepository(context, packageSource, orderStore, Dispatchers.IO)
         val firstLoadStarted = CountDownLatch(1)
         val finishFirstLoad = CountDownLatch(1)
         packageSource.duringNextLoad {

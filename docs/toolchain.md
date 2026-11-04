@@ -83,6 +83,24 @@ R8 removes and renames code that nothing seems to call, so code that's reached o
 
 When something breaks, `app/build/outputs/mapping/release/usage.txt` lists the code R8 removed, and `retrace` in the SDK's `cmdline-tools` turns a renamed stack trace back into source names using `mapping.txt` from the same build. Keep rules go in `app/src/main/keepRules/*.keep`, each with a comment saying what needs it.
 
+## Checking backup and restore
+
+Auto Backup saves BC Launcher's DataStore files (ARCHITECTURE.md, Stored data). After changing the backup rules or where data is stored, check on the Google TV emulator that a reinstall brings the data back. The local transport keeps the backup on the emulator, so no Google account is needed.
+
+1. Install the debug build, open BC Launcher, and save some data, such as the order of the apps. `adb shell run-as io.github.bryancassell.bclauncher ls -R files` lists the files, and `cat` in place of `ls -R` shows one.
+2. Back up to the local transport:
+   ```
+   adb shell bmgr enable true
+   adb shell bmgr transport com.android.localtransport/.LocalTransport
+   adb shell settings put secure backup_local_transport_parameters is_encrypted=true
+   adb shell bmgr backupnow io.github.bryancassell.bclauncher
+   ```
+   The last command prints `Package io.github.bryancassell.bclauncher with result: Success`. The emulator image has no Google backup transport to switch back to, so backup stays on with the local transport, which only later checks use.
+3. Reinstall, which restores the backup: `adb uninstall io.github.bryancassell.bclauncher`, then `adb install app/build/outputs/apk/debug/app-debug.apk`.
+4. Open BC Launcher. It shows the data from step 1, and the files hold it again.
+
+A restore only goes to an app signed with the same key as the backup. To check that a release reads stored data, as "Checking a release build" asks after a library update, sign the release with the debug key and install it in step 3 in place of the debug build. `keytool -importkeystore -srckeystore ~/.android/debug.keystore -srcstorepass android -srcalias androiddebugkey -destalias bclauncher -destkeystore <file> -deststorepass <password> -destkeypass <password>` copies the key under the alias the build expects.
+
 ## CI
 
 `.github/workflows/ci.yml` runs on every PR and on pushes to `main`:
