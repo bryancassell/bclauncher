@@ -18,6 +18,12 @@
     <string name="home_button_message_detail">To have it open BC Launcher, select BC Launcher in Accessibility settings and turn it on. BC Launcher then sees which buttons you press on the remote and which app is on screen, and uses them only to open BC Launcher or Google TV\'s panel.</string>
     <string name="home_button_use">Use BC Launcher</string>
     <string name="home_button_settings_did_not_open">Couldn\'t open Accessibility settings</string>
+    <!-- The button at the top right that opens Google TV's own home screen. -->
+    <string name="google_tv">Google TV</string>
+    <string name="google_tv_did_not_open">Couldn\'t open Google TV</string>
+    <!-- The button at the top right that opens device settings. -->
+    <string name="settings">Settings</string>
+    <string name="settings_did_not_open">Couldn\'t open Settings</string>
     <!-- Shown for BC Launcher's service in Accessibility settings. -->
     <string name="home_button_service_description">Opens BC Launcher when you press Home, and in place of Google TV\'s home when the TV starts. Holding Home still opens Google TV\'s panel. BC Launcher sees which buttons you press on the remote and which app is on screen, and uses them only to open BC Launcher or Google TV\'s panel.</string>
 </resources>

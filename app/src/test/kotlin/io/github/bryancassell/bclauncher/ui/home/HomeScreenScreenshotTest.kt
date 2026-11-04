@@ -55,6 +55,9 @@ class HomeScreenScreenshotTest {
                     onUninstallClick = {},
                     onRetry = {},
                     onUseBcLauncher = {},
+                    showsGoogleTv = true,
+                    onGoogleTv = {},
+                    onSettings = {},
                 )
             }
         }

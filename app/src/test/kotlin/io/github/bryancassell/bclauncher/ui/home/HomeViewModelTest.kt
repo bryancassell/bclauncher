@@ -1,11 +1,14 @@
 package io.github.bryancassell.bclauncher.ui.home
 
+import android.app.Application
 import android.content.Context
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.bryancassell.bclauncher.HomeButtonService
 import io.github.bryancassell.bclauncher.MainDispatcherRule
 import io.github.bryancassell.bclauncher.data.AppOrder
 import io.github.bryancassell.bclauncher.data.FakeAccessibilitySource
@@ -13,21 +16,26 @@ import io.github.bryancassell.bclauncher.data.FakeDataStore
 import io.github.bryancassell.bclauncher.data.FakePackageSource
 import io.github.bryancassell.bclauncher.data.HomeButtonRepository
 import io.github.bryancassell.bclauncher.data.InstalledAppsRepository
+import io.github.bryancassell.bclauncher.data.SystemScreensRepository
 import io.github.bryancassell.bclauncher.data.fakeApp
 import io.github.bryancassell.bclauncher.data.homeButtonService
 import java.io.IOException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.shadows.ShadowLog
 
 @RunWith(AndroidJUnit4::class)
@@ -51,6 +59,7 @@ class HomeViewModelTest {
                 mainDispatcherRule.dispatcher,
             ),
             HomeButtonRepository(context, accessibilitySource),
+            SystemScreensRepository(packageSource, mainDispatcherRule.dispatcher),
         )
     }
 
@@ -70,7 +79,12 @@ class HomeViewModelTest {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             viewModel.showsHomeButtonMessage.collect {}
         }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.googleTvHomeIntent.collect {}
+        }
     }
+
+    private val googleTv = "com.google.android.apps.tv.launcherx"
 
     @Test
     fun isLoadingBeforeTheAppsLoad() {
@@ -182,6 +196,79 @@ class HomeViewModelTest {
             Settings.ACTION_ACCESSIBILITY_SETTINGS,
             viewModel.homeButtonSettingsIntent.action,
         )
+    }
+
+    @Test
+    fun hidesGoogleTvUntilItsHomeIsFound() = runTest {
+        packageSource.setHome(googleTv)
+        // The lookup waits on this dispatcher until the test lets it run.
+        val lookups = StandardTestDispatcher(testScheduler)
+        val viewModel = HomeViewModel(
+            InstalledAppsRepository(
+                context,
+                packageSource,
+                orderStore,
+                mainDispatcherRule.dispatcher,
+            ),
+            HomeButtonRepository(context, accessibilitySource),
+            SystemScreensRepository(packageSource, lookups),
+        )
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.googleTvHomeIntent.collect {}
+        }
+
+        assertNull(viewModel.googleTvHomeIntent.value)
+
+        advanceUntilIdle()
+        assertEquals(googleTv, viewModel.googleTvHomeIntent.value?.`package`)
+        viewModel.viewModelScope.cancel()
+    }
+
+    @Test
+    fun opensGoogleTvsHomeOnceFound() = runTest {
+        packageSource.setHome(googleTv)
+
+        collectState()
+
+        assertEquals(googleTv, viewModel.googleTvHomeIntent.value?.`package`)
+    }
+
+    @Test
+    fun hidesGoogleTvWithoutAHomeActivity() = runTest {
+        collectState()
+
+        assertNull(viewModel.googleTvHomeIntent.value)
+    }
+
+    @Test
+    fun hidesGoogleTvWhenItsHomeCannotBeFound() = runTest {
+        packageSource.failFindingHome(SecurityException("package manager unavailable"))
+
+        collectState()
+
+        assertNull(viewModel.googleTvHomeIntent.value)
+        val log = ShadowLog.getLogsForTag("HomeViewModel").single()
+        assertEquals(Log.ERROR, log.type)
+        assertTrue(log.throwable is SecurityException)
+    }
+
+    @Test
+    fun openingGoogleTvsHomeTellsTheHomeButtonServiceThenOpensIt() {
+        var opened = 0
+
+        viewModel.onOpeningGoogleTvHome { opened++ }
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(
+            HomeButtonService.ACTION_OPENING_GOOGLE_TV_HOME,
+            shadowOf(context as Application).broadcastIntents.single().action,
+        )
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun settingsIntentOpensDeviceSettings() {
+        assertEquals(Settings.ACTION_SETTINGS, viewModel.settingsIntent.action)
     }
 
     @Test

@@ -1,7 +1,12 @@
 package io.github.bryancassell.bclauncher
 
 import android.app.Application
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.drawable.ColorDrawable
+import android.os.Looper
 import android.provider.Settings
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.key.Key
@@ -9,10 +14,13 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -39,6 +47,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -297,5 +306,103 @@ class MainActivityTest {
             application.getString(R.string.home_button_message),
         ).assertDoesNotExist()
         composeRule.onTile("Netflix").assertIsFocused()
+    }
+
+    private val googleTv = "com.google.android.apps.tv.launcherx"
+
+    // From the first tile, past Use BC Launcher in the message.
+    private val toGoogleTv = listOf(Key.DirectionUp, Key.DirectionUp)
+
+    @Test
+    fun googleTvTellsTheHomeButtonServiceThenOpensGoogleTvsHome() {
+        packageSource.setHome(googleTv)
+
+        composeRule.pressKeys(toGoogleTv + Key.DirectionCenter)
+        // Google TV's home starts once the service has the broadcast, as its result.
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(
+            HomeButtonService.ACTION_OPENING_GOOGLE_TV_HOME,
+            shadowOf(application).broadcastIntents.single().action,
+        )
+        val started = shadowOf(application).nextStartedActivity
+        assertEquals(googleTv, started.`package`)
+        assertTrue(started.hasCategory(Intent.CATEGORY_HOME))
+    }
+
+    @Test
+    fun googleTvsHomeThatDoesNotOpenIsReported() {
+        packageSource.setHome(googleTv)
+        // Robolectric's package manager has no Google TV, so checking activities makes starting it fail.
+        shadowOf(application).checkActivities(true)
+
+        composeRule.pressKeys(toGoogleTv + Key.DirectionCenter)
+        // Google TV's home starts once the service has the broadcast, as its result.
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(
+            application.getString(R.string.google_tv_did_not_open),
+            ShadowToast.getTextOfLatestToast(),
+        )
+    }
+
+    @Test
+    fun googleTvsHomeDoesNotOpenOnceTheHomeScreenIsCovered() {
+        packageSource.setHome(googleTv)
+        // Stands in for a service slow to answer: the broadcast's result waits until this receiver finishes.
+        var slowService: BroadcastReceiver.PendingResult? = null
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                slowService = goAsync()
+            }
+        }
+        // Registered as the service registers, with the permission Android grants at install before API 33.
+        shadowOf(
+            application,
+        ).grantPermissions("${application.packageName}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
+        ContextCompat.registerReceiver(
+            application,
+            receiver,
+            IntentFilter(HomeButtonService.ACTION_OPENING_GOOGLE_TV_HOME),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+
+        composeRule.pressKeys(toGoogleTv + Key.DirectionCenter)
+        shadowOf(Looper.getMainLooper()).idle()
+        // The user opened an app before the broadcast came back.
+        composeRule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+        checkNotNull(slowService).finish()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertNull(shadowOf(application).nextStartedActivity)
+    }
+
+    @Test
+    fun noGoogleTvWithoutAHomeActivity() {
+        composeRule.onNode(
+            hasText(application.getString(R.string.google_tv)) and hasClickAction(),
+        ).assertDoesNotExist()
+    }
+
+    @Test
+    fun settingsOpensDeviceSettings() {
+        packageSource.setHome(googleTv)
+
+        composeRule.pressKeys(toGoogleTv + Key.DirectionRight + Key.DirectionCenter)
+
+        assertEquals(Settings.ACTION_SETTINGS, shadowOf(application).nextStartedActivity.action)
+    }
+
+    @Test
+    fun settingsThatDoNotOpenAreReported() {
+        shadowOf(application).checkActivities(true)
+
+        // With no Google TV, Up from Use BC Launcher reaches Settings.
+        composeRule.pressKeys(toGoogleTv + Key.DirectionCenter)
+
+        assertEquals(
+            application.getString(R.string.settings_did_not_open),
+            ShadowToast.getTextOfLatestToast(),
+        )
     }
 }

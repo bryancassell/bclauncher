@@ -8,6 +8,12 @@ interface PackageSource {
     fun tvLauncherActivities(): List<InstalledApp>
 
     /**
+     * The package of the activity a Home intent opens, which on Google TV is Google TV's launcher, or null when there's
+     * none. It reads PackageManager, so it blocks.
+     */
+    fun homePackage(): String?
+
+    /**
      * Emits once as soon as it's listening, then each time [tvLauncherActivities] may have changed: when an app is
      * installed, updated, removed, enabled or disabled, or the language changes. Emitting first only once it's
      * listening means a change during the first load still causes another.

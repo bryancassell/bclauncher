@@ -8,6 +8,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import io.github.bryancassell.bclauncher.data.HomeButtonRepository
 import io.github.bryancassell.bclauncher.data.InstalledApp
 import io.github.bryancassell.bclauncher.data.InstalledAppsRepository
+import io.github.bryancassell.bclauncher.data.SystemScreensRepository
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +40,7 @@ private const val TAG = "HomeViewModel"
 class HomeViewModel @Inject constructor(
     repository: InstalledAppsRepository,
     private val homeButtonRepository: HomeButtonRepository,
+    private val systemScreensRepository: SystemScreensRepository,
 ) : ViewModel() {
     // Each new value restarts collecting the apps, which loads them again.
     private val loadRequests = MutableStateFlow(0)
@@ -83,6 +85,30 @@ class HomeViewModel @Inject constructor(
     /** Opens Accessibility settings, where the user turns BC Launcher's service on or off. */
     val homeButtonSettingsIntent: Intent
         get() = homeButtonRepository.settingsIntent
+
+    /**
+     * Opens Google TV's home, or null while the screen hides its button: until it's known, and when there's no Home
+     * activity to open.
+     */
+    val googleTvHomeIntent: StateFlow<Intent?> = systemScreensRepository.googleTvHomeIntent
+        // Reading PackageManager may throw, as loading the apps can. Without the button, the home screen still works.
+        .catch { error ->
+            Log.e(TAG, "Couldn't find Google TV's home", error)
+            emit(null)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Opens device settings. */
+    val settingsIntent: Intent
+        get() = systemScreensRepository.settingsIntent
+
+    /**
+     * Keeps BC Launcher's service from opening BC Launcher over Google TV's home, then calls [open], where the screen
+     * starts it.
+     */
+    fun onOpeningGoogleTvHome(open: () -> Unit) {
+        homeButtonRepository.openingGoogleTvHome(open)
+    }
 
     /**
      * Loads the apps again after one didn't open, since its tile may be stale: when an update removes an app's only

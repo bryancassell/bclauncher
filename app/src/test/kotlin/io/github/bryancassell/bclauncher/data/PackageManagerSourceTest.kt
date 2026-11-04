@@ -164,6 +164,49 @@ class PackageManagerSourceTest {
         assertNull(listedApp("com.example.tv").banner)
     }
 
+    /** Installs a package whose activity has a Home filter, with CATEGORY_DEFAULT unless [isDefault] is false. */
+    private fun installHome(packageName: String, isDefault: Boolean = true) {
+        install(packageName)
+        packageManager.addIntentFilterForActivity(
+            ComponentName(packageName, "$packageName.MainActivity"),
+            IntentFilter(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                if (isDefault) addCategory(Intent.CATEGORY_DEFAULT)
+            },
+        )
+    }
+
+    @Test
+    fun homePackageIsTheOneAHomeIntentOpens() {
+        install("com.example.tvapp")
+        installHome(GOOGLE_TV)
+
+        assertEquals(GOOGLE_TV, source.homePackage())
+    }
+
+    @Test
+    fun homePackageIsNullWithoutAHomeApp() {
+        install("com.example.tvapp")
+
+        assertNull(source.homePackage())
+    }
+
+    @Test
+    fun homePackageLeavesOutAHomeActivityThatAHomeIntentCannotStart() {
+        // startActivity matches only activities with CATEGORY_DEFAULT.
+        installHome(GOOGLE_TV, isDefault = false)
+
+        assertNull(source.homePackage())
+    }
+
+    @Test
+    fun homePackageIsNullForAndroidsChooser() {
+        // resolveActivity returns the chooser, in package "android", when Home activities tie with no default set.
+        installHome("android")
+
+        assertNull(source.homePackage())
+    }
+
     @Test
     fun emitsOnceListeningThenWhenAPackageIsAddedOrRemoved() = runTest {
         val changes = countChanges()
@@ -203,5 +246,6 @@ class PackageManagerSourceTest {
         const val APPLICATION_BANNER = 0x7f010001
         const val ACTIVITY_BANNER = 0x7f010002
         const val HELD_PERMISSION = "com.example.permission.HELD"
+        const val GOOGLE_TV = "com.google.android.apps.tv.launcherx"
     }
 }

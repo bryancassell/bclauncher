@@ -4,8 +4,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
@@ -54,9 +56,12 @@ class GoogleTvLaunchTest {
 
         ActivityScenario.launch<MainActivity>(intent).use {
             tileCounts.forEach { (label, count) ->
-                // A tile is described by its banner, or shows the app's name when it has none.
+                // A tile is described by its banner, or shows the app's name when it has none. Only nodes in
+                // the grid count, since the Settings button has the same text as the emulator's Settings app.
                 composeRule.waitUntilNodeCount(
-                    hasClickAction() and (hasContentDescription(label) or hasText(label)),
+                    hasClickAction() and
+                        (hasContentDescription(label) or hasText(label)) and
+                        hasAnyAncestor(hasScrollToIndexAction()),
                     count,
                     timeoutMillis = 5_000,
                 )

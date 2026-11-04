@@ -110,6 +110,9 @@ class AppMenuTest {
                     onUninstallClick = { uninstallsAsked += it },
                     onRetry = {},
                     onUseBcLauncher = {},
+                    showsGoogleTv = true,
+                    onGoogleTv = {},
+                    onSettings = {},
                 )
             }
         }

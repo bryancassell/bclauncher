@@ -37,7 +37,7 @@ The UI uses Compose for TV. `MaterialTheme`, `Surface`, `Text` and other Materia
 
 The code follows Android's [Guide to app architecture](https://developer.android.com/topic/architecture):
 
-- The UI layer is Compose screens and their ViewModels, in `ui/<screen>`. A ViewModel exposes its screen's state as a `StateFlow`. A screen starts other apps' activities itself, with an intent from the data layer, and tells its ViewModel only when one fails, since Android's [UI events guide](https://developer.android.com/topic/architecture/ui-layer/events) treats navigation as UI logic (#5).
+- The UI layer is Compose screens and their ViewModels, in `ui/<screen>`. A ViewModel exposes its screen's state as a `StateFlow`. A screen starts other apps' activities itself, with an intent from the data layer, and tells its ViewModel when one fails, since Android's [UI events guide](https://developer.android.com/topic/architecture/ui-layer/events) treats navigation as UI logic (#5).
 - The data layer is repositories, in `data`.
 - A domain layer waits until two ViewModels need the same logic.
 
@@ -63,4 +63,4 @@ Tests that start an `@AndroidEntryPoint` activity run on `HiltTestApplication`, 
 
 ## Home button
 
-Google TV's launcher stays Android's Home app whatever the user chooses as the default. Its Home filter has priority 2, which only a system app can have, and Android goes by the default only between candidates of the same priority. So a `CATEGORY_HOME` intent opens Google TV, and BC Launcher declares no Home filter. Instead, `HomeButtonService`, an accessibility service the user turns on, takes the remote's Home key, hands short presses on to Android, and starts `MainActivity` in place of Google TV's home. It also does that when it connects, and for 1.5 s after a Home press, if Google TV's home comes to the front, so an entry that opens Google TV's home (#6) has to allow for it. It runs in its own process, `:home_button`, which shares no memory with the home screen (#10).
+Google TV's launcher stays Android's Home app whatever the user chooses as the default. Its Home filter has priority 2, which only a system app can have, and Android goes by the default only between candidates of the same priority. So a `CATEGORY_HOME` intent opens Google TV, and BC Launcher declares no Home filter. Instead, `HomeButtonService`, an accessibility service the user turns on, takes the remote's Home key, hands short presses on to Android, and starts `MainActivity` in place of Google TV's home. It also does that when it connects, and for 1.5 s after a Home press, if Google TV's home comes to the front, unless the home screen's Google TV button opened it, which a broadcast tells the service (#6). It runs in its own process, `:home_button`, which shares no memory with the home screen (#10).
