@@ -12,8 +12,12 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.core.content.ContextCompat
@@ -31,8 +35,12 @@ import io.github.bryancassell.bclauncher.data.FakePackageSource
 import io.github.bryancassell.bclauncher.data.IoDispatcher
 import io.github.bryancassell.bclauncher.data.fakeApp
 import io.github.bryancassell.bclauncher.data.homeButtonService
+import io.github.bryancassell.bclauncher.ui.home.holdSelect
+import io.github.bryancassell.bclauncher.ui.home.onMenu
+import io.github.bryancassell.bclauncher.ui.home.onMenuEntry
 import io.github.bryancassell.bclauncher.ui.home.onTile
 import io.github.bryancassell.bclauncher.ui.home.pressKeys
+import io.github.bryancassell.bclauncher.ui.home.pressKeysInMenu
 import io.github.bryancassell.bclauncher.ui.theme.DarkColorScheme
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
@@ -123,6 +131,91 @@ class MainActivityTest {
         composeRule.onTile("Plex").assertDoesNotExist()
         // YouTube took Plex's place, so the user keeps their place in the grid.
         composeRule.onTile("YouTube").assertIsFocused()
+    }
+
+    @Test
+    fun appSettingsInAnAppsMenuOpensItsAppInfo() {
+        composeRule.pressKeys(listOf(Key.DirectionRight))
+        composeRule.holdSelect()
+
+        composeRule.pressKeysInMenu(listOf(Key.DirectionDown, Key.DirectionCenter))
+
+        val started = shadowOf(application).nextStartedActivity
+        assertTrue(started.filterEquals(plex.appSettingsIntent))
+        assertEquals(plex.appSettingsIntent.flags, started.flags)
+    }
+
+    @Test
+    fun appSettingsThatDoNotOpenAreReported() {
+        // Robolectric's package manager has no Settings app, so checking activities makes starting it fail.
+        shadowOf(application).checkActivities(true)
+        composeRule.pressKeys(listOf(Key.DirectionRight))
+        composeRule.holdSelect()
+
+        composeRule.pressKeysInMenu(listOf(Key.DirectionDown, Key.DirectionCenter))
+
+        assertEquals(
+            application.getString(R.string.app_settings_did_not_open, "Plex"),
+            ShadowToast.getTextOfLatestToast(),
+        )
+    }
+
+    @Test
+    fun uninstallInAnAppsMenuAsksToUninstallIt() {
+        composeRule.pressKeys(listOf(Key.DirectionRight))
+        composeRule.holdSelect()
+
+        composeRule.pressKeysInMenu(
+            listOf(Key.DirectionDown, Key.DirectionDown, Key.DirectionCenter),
+        )
+
+        val started = shadowOf(application).nextStartedActivity
+        assertTrue(started.filterEquals(plex.uninstallIntent))
+        assertEquals(plex.uninstallIntent.flags, started.flags)
+    }
+
+    @Test
+    fun anUninstallThatDoesNotOpenIsReported() {
+        // Robolectric's package manager has no uninstaller, so checking activities makes starting it fail.
+        shadowOf(application).checkActivities(true)
+        composeRule.pressKeys(listOf(Key.DirectionRight))
+        composeRule.holdSelect()
+
+        composeRule.pressKeysInMenu(
+            listOf(Key.DirectionDown, Key.DirectionDown, Key.DirectionCenter),
+        )
+
+        assertEquals(
+            application.getString(R.string.uninstall_did_not_open, "Plex"),
+            ShadowToast.getTextOfLatestToast(),
+        )
+    }
+
+    @Test
+    fun anAppsMenuClosesWhenTheUserLeavesTheHomeScreen() {
+        composeRule.pressKeys(listOf(Key.DirectionRight))
+        composeRule.holdSelect()
+
+        // Home, or another app, covers the home screen, which then comes back.
+        composeRule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+        composeRule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+
+        composeRule.onMenu().assertDoesNotExist()
+        composeRule.onTile("Plex").assertIsFocused()
+    }
+
+    @Test
+    fun anAppsMenuIsStillOpenWithTheSameEntryFocusedAfterTheHomeScreenIsRecreated() {
+        composeRule.pressKeys(listOf(Key.DirectionRight))
+        composeRule.holdSelect()
+        composeRule.pressKeysInMenu(listOf(Key.DirectionDown))
+
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.onNode(isHeading() and hasAnyAncestor(isDialog())).assertTextEquals("Plex")
+        composeRule.onMenuEntry(
+            application.getString(R.string.app_option_app_settings),
+        ).assertIsFocused()
     }
 
     @Test

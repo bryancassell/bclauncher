@@ -38,7 +38,11 @@ class SystemScreensRepository @Inject constructor(
         }
         .flowOn(ioDispatcher)
 
-    /** Opens device settings. */
+    /**
+     * Opens device settings. Clearing Settings' task first, as App settings and Use BC Launcher do, means it opens at
+     * its start and Back returns to BC Launcher, not to a Settings screen the user left open earlier.
+     */
     val settingsIntent: Intent
-        get() = Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        get() = Intent(Settings.ACTION_SETTINGS)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
 }

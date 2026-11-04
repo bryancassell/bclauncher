@@ -25,18 +25,22 @@ private fun HomeScreenPreview() {
             label = "App $index",
             banner = ColorDrawable(color.toInt()),
             icon = icon,
+            isSystemApp = false,
         )
     } + InstalledApp(
         component = ComponentName("com.example.nobanner", "com.example.nobanner.MainActivity"),
         label = "No banner",
         banner = null,
         icon = icon,
+        isSystemApp = false,
     )
     BcLauncherTheme {
         HomeScreen(
             uiState = HomeUiState.Content(apps),
             showsHomeButtonMessage = true,
             onAppClick = {},
+            onAppSettingsClick = {},
+            onUninstallClick = {},
             onRetry = {},
             onUseBcLauncher = {},
             showsGoogleTv = true,
@@ -54,6 +58,8 @@ private fun EmptyHomeScreenPreview() {
             uiState = HomeUiState.Empty,
             showsHomeButtonMessage = false,
             onAppClick = {},
+            onAppSettingsClick = {},
+            onUninstallClick = {},
             onRetry = {},
             onUseBcLauncher = {},
             showsGoogleTv = true,

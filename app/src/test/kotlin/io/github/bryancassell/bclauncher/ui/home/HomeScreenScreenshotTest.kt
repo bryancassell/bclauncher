@@ -51,6 +51,8 @@ class HomeScreenScreenshotTest {
                     uiState = HomeUiState.Content(apps()),
                     showsHomeButtonMessage = showsHomeButtonMessage,
                     onAppClick = {},
+                    onAppSettingsClick = {},
+                    onUninstallClick = {},
                     onRetry = {},
                     onUseBcLauncher = {},
                     showsGoogleTv = true,
