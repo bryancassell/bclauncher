@@ -29,6 +29,7 @@ import io.github.bryancassell.bclauncher.data.fakeApp
 import io.github.bryancassell.bclauncher.data.homeButtonService
 import io.github.bryancassell.bclauncher.ui.home.holdSelect
 import io.github.bryancassell.bclauncher.ui.home.onMenu
+import io.github.bryancassell.bclauncher.ui.home.onMenuEntry
 import io.github.bryancassell.bclauncher.ui.home.onTile
 import io.github.bryancassell.bclauncher.ui.home.pressKeys
 import io.github.bryancassell.bclauncher.ui.home.pressKeysInMenu
@@ -195,13 +196,17 @@ class MainActivityTest {
     }
 
     @Test
-    fun anAppsMenuIsStillOpenAfterTheHomeScreenIsRecreated() {
+    fun anAppsMenuIsStillOpenWithTheSameEntryFocusedAfterTheHomeScreenIsRecreated() {
         composeRule.pressKeys(listOf(Key.DirectionRight))
         composeRule.holdSelect()
+        composeRule.pressKeysInMenu(listOf(Key.DirectionDown))
 
         composeRule.activityRule.scenario.recreate()
 
         composeRule.onNode(isHeading() and hasAnyAncestor(isDialog())).assertTextEquals("Plex")
+        composeRule.onMenuEntry(
+            application.getString(R.string.app_option_app_settings),
+        ).assertIsFocused()
     }
 
     @Test

@@ -57,8 +57,27 @@ fun SemanticsNodeInteractionsProvider.onMenuEntry(label: String): SemanticsNodeI
     onNode(hasText(label) and hasClickAction() and hasAnyAncestor(isDialog()))
 
 /** Presses [keys] on the remote while the app menu has focus. */
-fun SemanticsNodeInteractionsProvider.pressKeysInMenu(keys: List<Key>) {
-    onMenu().performKeyInput { keys.forEach { pressKey(it) } }
+fun SemanticsNodeInteractionsProvider.pressKeysInMenu(keys: List<Key>) = pressKeys(keys, onMenu())
+
+private const val SELECT = NativeKeyEvent.KEYCODE_DPAD_CENTER
+private const val DOWN = NativeKeyEvent.KEYCODE_DPAD_DOWN
+
+/** A key going down afresh, or as the [repeat]th repeat of a held key. */
+private fun down(code: Int, repeat: Int = 0) =
+    NativeKeyEvent(0, 0, NativeKeyEvent.ACTION_DOWN, code, repeat)
+
+/** A key's release, or, when [canceled], the release Android sends when the window loses focus while it's down. */
+private fun up(code: Int, canceled: Boolean = false): NativeKeyEvent {
+    val flags = if (canceled) NativeKeyEvent.FLAG_CANCELED else 0
+    return NativeKeyEvent(0, 0, NativeKeyEvent.ACTION_UP, code, 0, 0, 0, 0, flags)
+}
+
+/**
+ * Sends [events] to the window that holds this node, as a TV's input system does. Unlike Compose's test input, it can
+ * send a key's repeats or release to a window that didn't get its press.
+ */
+private fun SemanticsNodeInteraction.send(vararg events: NativeKeyEvent) {
+    events.forEach { performKeyPress(KeyEvent(it)) }
 }
 
 @OptIn(ExperimentalTestApi::class)
@@ -134,20 +153,7 @@ class AppMenuTest {
 
         // On a TV, the menu takes focus while Select is still held, so the press's later repeats and its release come
         // to the menu.
-        composeRule.onMenu().performKeyPress(
-            KeyEvent(
-                NativeKeyEvent(
-                    0,
-                    0,
-                    NativeKeyEvent.ACTION_DOWN,
-                    NativeKeyEvent.KEYCODE_DPAD_CENTER,
-                    2,
-                ),
-            ),
-        )
-        composeRule.onMenu().performKeyPress(
-            KeyEvent(NativeKeyEvent(NativeKeyEvent.ACTION_UP, NativeKeyEvent.KEYCODE_DPAD_CENTER)),
-        )
+        composeRule.onMenu().send(down(SELECT, repeat = 2), up(SELECT))
 
         assertEquals(emptyList<InstalledApp>(), clicked)
         composeRule.onMenuEntry(launch).assertIsFocused()
@@ -158,29 +164,40 @@ class AppMenuTest {
         openApp2sMenu()
 
         // Down is pressed and released while Select, which opened the menu, is still held and repeating.
-        composeRule.onMenu().performKeyPress(
-            KeyEvent(
-                NativeKeyEvent(
-                    0,
-                    0,
-                    NativeKeyEvent.ACTION_DOWN,
-                    NativeKeyEvent.KEYCODE_DPAD_CENTER,
-                    2,
-                ),
-            ),
-        )
-        composeRule.onMenu().performKeyPress(
-            KeyEvent(NativeKeyEvent(NativeKeyEvent.ACTION_DOWN, NativeKeyEvent.KEYCODE_DPAD_DOWN)),
-        )
-        composeRule.onMenu().performKeyPress(
-            KeyEvent(NativeKeyEvent(NativeKeyEvent.ACTION_UP, NativeKeyEvent.KEYCODE_DPAD_DOWN)),
-        )
-        composeRule.onMenu().performKeyPress(
-            KeyEvent(NativeKeyEvent(NativeKeyEvent.ACTION_UP, NativeKeyEvent.KEYCODE_DPAD_CENTER)),
-        )
+        composeRule.onMenu().send(down(SELECT, repeat = 2), down(DOWN), up(DOWN), up(SELECT))
 
         assertEquals(emptyList<InstalledApp>(), appSettingsOpened)
         composeRule.onMenuEntry(appSettings).assertIsFocused()
+    }
+
+    @Test
+    fun aPressInTheMenuThatAndroidCancelsDoesNotChooseAnEntry() {
+        openApp2sMenu()
+
+        // Home is pressed while Select is held on Launch, so the menu's window loses focus and gets a cancelled release.
+        composeRule.onMenu().send(down(SELECT), up(SELECT, canceled = true))
+
+        assertEquals(emptyList<InstalledApp>(), clicked)
+        composeRule.onMenu().assertExists()
+    }
+
+    @Test
+    fun releasingSelectAfterBackDoesNotOpenTheAppButTheNextPressDoes() {
+        showScreen()
+        composeRule.pressKeys(listOf(Key.DirectionRight))
+        // Select is held on App 2's tile, and on a TV the menu takes focus, so the grid gets a cancelled release.
+        composeRule.onTile(
+            "App 2",
+        ).send(down(SELECT), down(SELECT, repeat = 1), up(SELECT, canceled = true))
+        composeRule.onMenu().assertExists()
+
+        // The user presses Back while still holding Select, and the rest of the press reaches the grid.
+        Espresso.pressBack()
+        composeRule.onTile("App 2").send(down(SELECT, repeat = 5), up(SELECT))
+        assertEquals(emptyList<InstalledApp>(), clicked)
+
+        composeRule.pressKeys(listOf(Key.DirectionCenter))
+        assertEquals(listOf(apps[1]), clicked)
     }
 
     @Test

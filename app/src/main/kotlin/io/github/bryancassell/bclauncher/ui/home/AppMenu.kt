@@ -6,10 +6,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -44,13 +49,17 @@ internal enum class AppOption(@StringRes val label: Int) {
 
 /**
  * [app]'s options, in a dialog over the grid with the app's name above them. A dialog is its own window, so it keeps
- * focus and handles Back. Focus starts on the first entry. Choosing one or pressing Back closes the dialog, and focus is still on the tile, since the grid's
- * window losing focus to the dialog's doesn't clear it.
+ * focus and handles Back. Choosing an entry or pressing Back closes the dialog, and focus is still on the tile, since
+ * the grid's window losing focus to the dialog's doesn't clear it.
+ *
+ * Focus starts on the first entry. The focused entry is saved, so it's focused again after a configuration change
+ * recreates the activity, as the grid's focused tile is.
  */
 @Composable
 internal fun AppMenu(app: InstalledApp, onOptionClick: (AppOption) -> Unit, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
-        val firstEntry = remember { FocusRequester() }
+        val entries = remember { AppOption.entries.associateWith { FocusRequester() } }
+        var focused by rememberSaveable { mutableStateOf(AppOption.entries.first()) }
         val heldPress = remember { HeldPressFilter() }
         Surface(
             modifier = Modifier
@@ -69,19 +78,23 @@ internal fun AppMenu(app: InstalledApp, onOptionClick: (AppOption) -> Unit, onDi
                         .semantics { heading() },
                     style = MaterialTheme.typography.titleMedium,
                 )
-                AppOption.entries.forEachIndexed { index, option ->
-                    val focus = if (index == 0) Modifier.focusRequester(firstEntry) else Modifier
+                AppOption.entries.forEach { option ->
                     ListItem(
                         selected = false,
                         onClick = { onOptionClick(option) },
                         headlineContent = { Text(stringResource(option.label)) },
-                        modifier = focus,
+                        modifier = Modifier
+                            .focusRequester(entries.getValue(option))
+                            .onFocusChanged { if (it.isFocused) focused = option },
                         enabled = option.isEnabledFor(app),
                     )
                 }
             }
         }
-        LaunchedEffect(Unit) { firstEntry.requestFocus() }
+        // Read as the dialog is first composed. By the time the effect runs, focus has already gone to the first entry
+        // as the dialog opened, which sets focused to it.
+        val startEntry = remember { focused }
+        LaunchedEffect(Unit) { entries.getValue(startEntry).requestFocus() }
     }
 }
 
@@ -92,6 +105,10 @@ internal fun AppMenu(app: InstalledApp, onOptionClick: (AppOption) -> Unit, onDi
  * chooses itself on any release of Select, without checking that it saw the press (handleDPadEnter in tv-material
  * 1.1.0). So the release would choose the focused entry. Keys are tracked one by one, since the user can press Down
  * while still holding Select.
+ *
+ * A cancelled release is ignored too, even for a press that began in the menu. Android sends one when the window loses
+ * focus while the key is down, as when the user presses Home while holding Select on an entry, and ListItem doesn't
+ * check for it.
  */
 private class HeldPressFilter {
     // The keys that went down while the menu had focus and haven't been released.
@@ -103,7 +120,7 @@ private class HeldPressFilter {
         val freshPress = event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0
         if (freshPress) pressedHere += key
         return when (event.type) {
-            KeyEventType.KeyUp -> !pressedHere.remove(key)
+            KeyEventType.KeyUp -> !pressedHere.remove(key) || event.nativeKeyEvent.isCanceled
             else -> key !in pressedHere
         }
     }

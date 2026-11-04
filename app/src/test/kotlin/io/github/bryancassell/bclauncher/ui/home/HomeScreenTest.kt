@@ -36,9 +36,12 @@ import org.junit.runner.RunWith
 fun SemanticsNodeInteractionsProvider.onTile(label: String): SemanticsNodeInteraction =
     onNode(hasClickAction() and (hasContentDescription(label) or hasText(label)))
 
-/** Presses [keys] on the remote, in order. */
-fun SemanticsNodeInteractionsProvider.pressKeys(keys: List<Key>) {
-    onRoot().performKeyInput { keys.forEach { pressKey(it) } }
+/** Presses [keys] on the remote, in order, in the window that holds [node]. */
+fun SemanticsNodeInteractionsProvider.pressKeys(
+    keys: List<Key>,
+    node: SemanticsNodeInteraction = onRoot(),
+) {
+    node.performKeyInput { keys.forEach { pressKey(it) } }
 }
 
 @OptIn(ExperimentalTestApi::class)

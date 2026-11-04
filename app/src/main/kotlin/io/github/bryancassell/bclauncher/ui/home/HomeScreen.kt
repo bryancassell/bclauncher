@@ -10,7 +10,6 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
-import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,6 +41,12 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
@@ -82,45 +87,47 @@ fun HomeScreen(modifier: Modifier = Modifier, viewModel: HomeViewModel = hiltVie
     BackHandler {}
 
     // The screen starts other apps' activities itself, with the activity's context (ARCHITECTURE.md, Layers and
-    // packages), and says so when one doesn't open.
-    fun start(intent: Intent, @StringRes failure: Int, vararg formatArgs: Any): Boolean =
+    // packages), and says so when one doesn't open. The message is made only then.
+    fun start(intent: Intent, failure: () -> String): Boolean =
         context.startActivitySafely(intent).also { started ->
-            if (!started) {
-                val message = resources.getString(failure, *formatArgs)
-                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-            }
+            if (!started) Toast.makeText(context, failure(), Toast.LENGTH_SHORT).show()
         }
     HomeScreen(
         uiState = uiState,
         showsHomeButtonMessage = showsHomeButtonMessage,
         onAppClick = { app ->
-            if (!start(
-                    app.launchIntent,
-                    R.string.app_did_not_open,
-                    app.label,
-                )
-            ) {
-                viewModel.onLaunchFailed()
-            }
+            val started =
+                start(app.launchIntent) {
+                    resources.getString(R.string.app_did_not_open, app.label)
+                }
+            if (!started) viewModel.onLaunchFailed()
         },
         onAppSettingsClick = { app ->
-            start(app.appSettingsIntent, R.string.app_settings_did_not_open, app.label)
+            start(app.appSettingsIntent) {
+                resources.getString(R.string.app_settings_did_not_open, app.label)
+            }
         },
         onUninstallClick = { app ->
-            start(app.uninstallIntent, R.string.uninstall_did_not_open, app.label)
+            start(app.uninstallIntent) {
+                resources.getString(R.string.uninstall_did_not_open, app.label)
+            }
         },
         onRetry = viewModel::retry,
         onUseBcLauncher = {
-            start(viewModel.homeButtonSettingsIntent, R.string.home_button_settings_did_not_open)
+            start(viewModel.homeButtonSettingsIntent) {
+                resources.getString(R.string.home_button_settings_did_not_open)
+            }
         },
         modifier = modifier,
     )
 }
 
 /**
- * Whether [intent]'s activity started. A tile can outlive its activity: an update can remove it
- * (ActivityNotFoundException), or stop exporting it or add a permission to it (SecurityException), before the reload
- * drops the tile. Android's own launcher, Launcher3, catches and logs both in its startActivitySafely.
+ * Whether [intent]'s activity started. Android's own launcher, Launcher3, catches and logs the same two exceptions in
+ * its startActivitySafely:
+ * - ActivityNotFoundException, when nothing handles the intent. A tile can outlive its activity, since an update can
+ *   remove it before the reload drops the tile, and a device may have no screen for a Settings action.
+ * - SecurityException, when an update stopped exporting a tile's activity or added a permission to it.
  */
 internal fun Context.startActivitySafely(intent: Intent): Boolean = try {
     startActivity(intent)
@@ -238,6 +245,7 @@ private fun AppGrid(
     val grid = remember { FocusRequester() }
     val focus = remember { GridFocus() }
     var menuFor by rememberSaveable { mutableStateOf<ComponentName?>(null) }
+    val menuPress = remember { MenuPress() }
     val activity = LocalActivity.current
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         if (activity?.isChangingConfigurations != true) menuFor = null
@@ -252,7 +260,8 @@ private fun AppGrid(
         modifier = Modifier
             .fillMaxSize()
             .focusRequester(grid)
-            .focusRestorer(),
+            .focusRestorer()
+            .onPreviewKeyEvent { menuPress.onKeyEvent(it) },
         contentPadding = PaddingValues(horizontal = HORIZONTAL_MARGIN, vertical = VERTICAL_MARGIN),
         verticalArrangement = Arrangement.spacedBy(20.dp),
         horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -262,8 +271,11 @@ private fun AppGrid(
             val tile = remember { FocusRequester() }
             AppTile(
                 app = app,
-                onClick = { onAppClick(app) },
-                onLongClick = { menuFor = app.component },
+                onClick = { if (!menuPress.endsWithClick()) onAppClick(app) },
+                onLongClick = {
+                    menuPress.start()
+                    menuFor = app.component
+                },
                 modifier = Modifier
                     .focusRequester(tile)
                     .onFocusChanged {
@@ -303,6 +315,35 @@ private fun AppGrid(
         if (apps.none { it.component == menuFor }) menuFor = null
     }
 }
+
+/**
+ * The long press that opened the menu, until Select goes down again, so the click that ends it doesn't open the app.
+ *
+ * On a TV the menu's window takes focus while Select is still held, and the grid gets a cancelled release, which resets
+ * the Card's long press without a click. If the menu closes before Select is let go, as when the user presses Back
+ * first, the rest of the press can reach the grid again. tv-material's Card then clicks on the release, since its long
+ * press was reset (handleDPadEnter in tv-material 1.1.0).
+ */
+private class MenuPress {
+    private var open = false
+
+    fun start() {
+        open = true
+    }
+
+    /** Ends the long press when Select goes down afresh. Never consumes [event]. */
+    fun onKeyEvent(event: KeyEvent): Boolean {
+        val freshPress = event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0
+        if (freshPress && event.key in SELECT_KEYS) open = false
+        return false
+    }
+
+    /** Whether a tile's click is the end of the long press, which it then ends. */
+    fun endsWithClick(): Boolean = open.also { open = false }
+}
+
+// The keys tv-material's Card clicks on (SurfaceImpl.kt's AcceptableEnterClickKeys in tv-material 1.1.0).
+private val SELECT_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter)
 
 /** The app whose tile last had focus, and the list the grid last showed. */
 private class GridFocus {
